@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ResultScanner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">perfana-jmeter-maven-plugin</a> &gt; <a href="index.source.html" class="el_package">com.lazerycode.jmeter.testrunner</a> &gt; <span class="el_source">ResultScanner.java</span></div><h1>ResultScanner.java</h1><pre class="source lang-java linenums">package com.lazerycode.jmeter.testrunner;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.Scanner;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.lazerycode.jmeter.exceptions.ResultsFileNotFoundException;
+
+/**
+ * Handles checking a JMeter results file in XML format for errors and failures.
+ *
+ * @author Jon Roberts
+ */
+public class ResultScanner {
+<span class="fc" id="L18">    private static final Logger LOGGER = LoggerFactory.getLogger(ResultScanner.class);</span>
+
+    private static final String CSV_REQUEST_FAILURE = &quot;\\bfalse\\b&quot;;
+    private static final String CSV_REQUEST_SUCCESS = &quot;\\btrue\\b&quot;;
+
+	private static final String XML_REQUEST_FAILURE = &quot;s=\&quot;false\&quot;&quot;;
+	private static final String XML_REQUEST_SUCCESS = &quot;s=\&quot;true\&quot;&quot;;
+	private final boolean countFailures;
+	private final boolean countSuccesses;
+<span class="fc" id="L27">	private int failureCount = 0;</span>
+<span class="fc" id="L28">	private int successCount = 0;</span>
+    private boolean csv;
+
+<span class="fc" id="L31">	public ResultScanner(boolean countSuccesses, boolean countFailures, boolean isCsv) {</span>
+<span class="fc" id="L32">        this.countFailures = countFailures;</span>
+<span class="fc" id="L33">        this.countSuccesses = countSuccesses;</span>
+<span class="fc" id="L34">        this.csv = isCsv;</span>
+<span class="fc" id="L35">    }</span>
+	
+	public ResultScanner(boolean countSuccesses, boolean countFailures) {
+<span class="fc" id="L38">	    this(countSuccesses, countFailures, false);</span>
+<span class="fc" id="L39">	}</span>
+
+	/**
+	 * Work out how to parse the file (if at all)
+	 *
+	 * @param file File to parse
+	 * @throws ResultsFileNotFoundException
+	 */
+	public void parseResultFile(File file) throws ResultsFileNotFoundException {
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">	    String failurePattern = this.csv ? CSV_REQUEST_FAILURE : XML_REQUEST_FAILURE;</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">	    String successPattern = this.csv ? CSV_REQUEST_SUCCESS : XML_REQUEST_SUCCESS;</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">	    LOGGER.info(&quot;Parsing results file '{}' in format '{}', using failurePattern:'{}', successPattern:'{}'&quot;,</span>
+	            file,
+	            this.csv ? &quot;CSV&quot; : &quot;XML&quot;, failurePattern, successPattern);
+<span class="fc bfc" id="L53" title="All 2 branches covered.">		if (countFailures) {</span>
+<span class="fc" id="L54">			failureCount = failureCount + scanFileForPattern(file, failurePattern);</span>
+		}
+<span class="fc bfc" id="L56" title="All 2 branches covered.">		if (countSuccesses) {</span>
+<span class="fc" id="L57">			successCount = successCount + scanFileForPattern(file, successPattern);</span>
+		}
+<span class="fc" id="L59">	}</span>
+
+	/**
+	 * Parse a file for instances of a pattern
+	 *
+	 * @param file    The file to parse
+	 * @param pattern The pattern to look for
+	 * @return The number of times the pattern has been found
+	 * @throws ResultsFileNotFoundException
+	 */
+	private int scanFileForPattern(File file, String pattern) 
+	        throws ResultsFileNotFoundException { // NOSONAR
+<span class="fc" id="L71">		int patternCount = 0;</span>
+<span class="fc" id="L72">		LOGGER.debug(&quot;Scanning file '{}' using pattern '{}'&quot;, file.getAbsolutePath(), pattern);</span>
+<span class="fc" id="L73">		try (Scanner resultFileScanner = new Scanner(file)) {</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">			while (resultFileScanner.findWithinHorizon(pattern, 0) != null) {</span>
+<span class="fc" id="L75">				patternCount++;</span>
+			}
+<span class="nc" id="L77">		} catch (FileNotFoundException ex) {</span>
+<span class="nc" id="L78">			throw new ResultsFileNotFoundException(&quot;File not found for file:&quot;</span>
+<span class="nc" id="L79">			        +file.getAbsolutePath()</span>
+			        +&quot;, pattern:&quot;
+			        +pattern, ex);
+<span class="fc" id="L82">		}</span>
+<span class="fc" id="L83">        LOGGER.debug(&quot;Scanned file '{}' using pattern '{}', result:'{}'&quot;, file.getAbsolutePath(), pattern, patternCount);</span>
+
+<span class="fc" id="L85">		return patternCount;</span>
+	}
+
+	/**
+	 * @return failureCount
+	 */
+	public int getFailureCount() {
+<span class="fc" id="L92">		return this.failureCount;</span>
+	}
+
+	/**
+	 * @return failureCount
+	 */
+	public int getSuccessCount() {
+<span class="fc" id="L99">		return this.successCount;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

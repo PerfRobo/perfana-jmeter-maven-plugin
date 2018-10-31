@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RunJMeterServer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">perfana-jmeter-maven-plugin</a> &gt; <a href="index.source.html" class="el_package">com.lazerycode.jmeter.mojo</a> &gt; <span class="el_source">RunJMeterServer.java</span></div><h1>RunJMeterServer.java</h1><pre class="source lang-java linenums">package com.lazerycode.jmeter.mojo;
+
+import java.io.File;
+import java.io.IOException;
+
+import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Execute;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+
+import com.lazerycode.jmeter.configuration.JMeterArgumentsArray;
+import com.lazerycode.jmeter.configuration.JMeterProcessJVMSettings;
+import com.lazerycode.jmeter.testrunner.JMeterProcessBuilder;
+import com.lazerycode.jmeter.utility.UtilityFunctions;
+
+/**
+ * Goal that runs JMeter in server mode.&lt;br/&gt;
+ * This goal runs within Lifecycle phase {@link LifecyclePhase#TEST}.
+ * @author Philippe Mouawad
+ * @since 2.5.0
+ */
+@Mojo(name = &quot;remote-server&quot;, defaultPhase = LifecyclePhase.TEST)
+@Execute(goal = &quot;configure&quot;)
+<span class="nc" id="L26">public class RunJMeterServer extends AbstractJMeterMojo {</span>
+
+	@Parameter(defaultValue = &quot;false&quot;)
+	private boolean runInBackground;
+
+	/**
+	 * Port to listen on
+	 */
+	@Parameter
+	private Integer serverPort;
+	
+    /**
+     * Exported RMI host name
+     */
+    @Parameter
+    private String exportedRmiHostname;
+	
+	private JMeterArgumentsArray testArgs;
+
+	/**
+	 * Load the JMeter server
+	 *
+	 * @throws MojoExecutionException
+	 * @throws MojoFailureException
+	 */
+	@Override
+	public void doExecute() throws MojoExecutionException, MojoFailureException {
+<span class="nc" id="L53">		getLog().info(&quot; &quot;);</span>
+<span class="nc" id="L54">		getLog().info(LINE_SEPARATOR);</span>
+<span class="nc" id="L55">		getLog().info(&quot; STARTING JMETER SERVER ON PORT:&quot;+ serverPort + &quot; WITH EXPORTED HOSTNAME:&quot;+exportedRmiHostname);</span>
+<span class="nc" id="L56">		getLog().info(LINE_SEPARATOR);</span>
+<span class="nc" id="L57">		testArgs = initializeJMeterArgumentsArray();</span>
+<span class="nc" id="L58">		getLog().debug(&quot;JMeter is called with the following command line arguments: &quot; + </span>
+<span class="nc" id="L59">		        UtilityFunctions.humanReadableCommandLineOutput(testArgs.buildArgumentsArray()));</span>
+<span class="nc" id="L60">		startJMeterServer();</span>
+<span class="nc" id="L61">	}</span>
+
+	private JMeterArgumentsArray initializeJMeterArgumentsArray() throws MojoExecutionException {
+<span class="nc" id="L64">		JMeterArgumentsArray currentTestArgs = new JMeterArgumentsArray(true, jmeterDirectory.getAbsolutePath());</span>
+<span class="nc" id="L65">		currentTestArgs.setProxyConfig(proxyConfig);</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        for (File customPropertiesFile : customPropertiesFiles) {</span>
+<span class="nc" id="L67">            currentTestArgs.setACustomPropertiesFile(customPropertiesFile);</span>
+<span class="nc" id="L68">        }</span>
+<span class="nc" id="L69">        currentTestArgs.setLogRootOverride(overrideRootLogLevel);</span>
+<span class="nc" id="L70">        currentTestArgs.setLogsDirectory(logsDirectory.getAbsolutePath());</span>
+<span class="nc" id="L71">        currentTestArgs.setServerMode(exportedRmiHostname, serverPort);</span>
+
+<span class="nc" id="L73">		return currentTestArgs;</span>
+	}
+
+	private void startJMeterServer() throws MojoExecutionException {
+<span class="nc" id="L77">	    JMeterProcessJVMSettings jMeterProcessJVMSettings = null;</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">	    if(this.jMeterProcessJVMSettings == null) {</span>
+<span class="nc" id="L79">	        jMeterProcessJVMSettings = new JMeterProcessJVMSettings();</span>
+	    } else {
+<span class="nc" id="L81">	        jMeterProcessJVMSettings = new JMeterProcessJVMSettings(this.jMeterProcessJVMSettings);</span>
+	    }
+<span class="nc bnc" id="L83" title="All 4 branches missed.">	    if(exportedRmiHostname!= null &amp;&amp; !exportedRmiHostname.isEmpty()) {</span>
+<span class="nc" id="L84">	        jMeterProcessJVMSettings.getArguments().add(&quot;-Djava.rmi.server.hostname=&quot;+exportedRmiHostname);	        </span>
+	    }
+<span class="nc" id="L86">	    jMeterProcessJVMSettings.getArguments().add(&quot;-Djava.awt.headless=true&quot;);</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">	    if(serverPort == null) {</span>
+<span class="nc" id="L88">	        throw new MojoExecutionException(&quot;serverPort is null, cannot start jmeter server&quot;);</span>
+	    }
+<span class="nc" id="L90">	    jMeterProcessJVMSettings.getArguments().add(&quot;-Dserver_port=&quot;+serverPort);</span>
+
+<span class="nc" id="L92">		JMeterProcessBuilder jmeterProcessBuilder = new JMeterProcessBuilder(jMeterProcessJVMSettings, </span>
+<span class="nc" id="L93">		        JMeterConfigurationHolder.getInstance().getRuntimeJarName());</span>
+<span class="nc" id="L94">		jmeterProcessBuilder.setWorkingDirectory(JMeterConfigurationHolder.getInstance().getWorkingDirectory());</span>
+<span class="nc" id="L95">		jmeterProcessBuilder.addArguments(testArgs.buildArgumentsArray());</span>
+		try {
+<span class="nc" id="L97">			final Process process = jmeterProcessBuilder.startProcess();</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">			if (!runInBackground) {</span>
+<span class="nc" id="L99">				process.waitFor();</span>
+			}
+<span class="nc" id="L101">		} catch (InterruptedException ex) {</span>
+<span class="nc" id="L102">			getLog().info(&quot; &quot;);</span>
+<span class="nc" id="L103">			getLog().info(&quot;System Exit Detected!  Stopping GUI...&quot;);</span>
+<span class="nc" id="L104">			getLog().info(&quot; &quot;);</span>
+<span class="nc" id="L105">			Thread.currentThread().interrupt();</span>
+<span class="nc" id="L106">		} catch (IOException e) {</span>
+<span class="nc" id="L107">			getLog().error(&quot;Error starting JMeter with args &quot;+testArgs.buildArgumentsArray()</span>
+<span class="nc" id="L108">			    + &quot;, in working directory:&quot;+JMeterConfigurationHolder.getInstance().getWorkingDirectory()</span>
+			    , e);
+<span class="nc" id="L110">		}</span>
+<span class="nc" id="L111">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,1002 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigureJMeterMojo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">perfana-jmeter-maven-plugin</a> &gt; <a href="index.source.html" class="el_package">com.lazerycode.jmeter.mojo</a> &gt; <span class="el_source">ConfigureJMeterMojo.java</span></div><h1>ConfigureJMeterMojo.java</h1><pre class="source lang-java linenums">package com.lazerycode.jmeter.mojo;
+
+import static com.lazerycode.jmeter.properties.ConfigurationFiles.GLOBAL_PROPERTIES;
+
+import static com.lazerycode.jmeter.properties.ConfigurationFiles.JMETER_PROPERTIES;
+import static com.lazerycode.jmeter.properties.ConfigurationFiles.REPORT_GENERATOR_PROPERTIES;
+import static com.lazerycode.jmeter.properties.ConfigurationFiles.SAVE_SERVICE_PROPERTIES;
+import static com.lazerycode.jmeter.properties.ConfigurationFiles.SYSTEM_PROPERTIES;
+import static com.lazerycode.jmeter.properties.ConfigurationFiles.UPGRADE_PROPERTIES;
+import static com.lazerycode.jmeter.properties.ConfigurationFiles.USER_PROPERTIES;
+import static com.lazerycode.jmeter.properties.ConfigurationFiles.values;
+import static org.apache.commons.io.FileUtils.copyInputStreamToFile;
+
+import java.io.File;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.EnumMap;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Component;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.artifact.AbstractArtifact;
+import org.eclipse.aether.artifact.Artifact;
+import org.eclipse.aether.artifact.DefaultArtifact;
+import org.eclipse.aether.collection.CollectRequest;
+import org.eclipse.aether.collection.DependencyCollectionException;
+import org.eclipse.aether.graph.Dependency;
+import org.eclipse.aether.graph.DependencyFilter;
+import org.eclipse.aether.graph.DependencyNode;
+import org.eclipse.aether.graph.Exclusion;
+import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.ArtifactDescriptorException;
+import org.eclipse.aether.resolution.ArtifactDescriptorRequest;
+import org.eclipse.aether.resolution.ArtifactDescriptorResult;
+import org.eclipse.aether.resolution.ArtifactRequest;
+import org.eclipse.aether.resolution.ArtifactResolutionException;
+import org.eclipse.aether.resolution.ArtifactResult;
+import org.eclipse.aether.resolution.DependencyRequest;
+import org.eclipse.aether.util.artifact.JavaScopes;
+import org.eclipse.aether.util.filter.DependencyFilterUtils;
+import org.eclipse.aether.util.version.GenericVersionScheme;
+import org.eclipse.aether.version.InvalidVersionSpecificationException;
+import org.eclipse.aether.version.Version;
+
+import com.jayway.jsonpath.Configuration;
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.Option;
+import com.lazerycode.jmeter.exceptions.DependencyResolutionException;
+import com.lazerycode.jmeter.exceptions.IOException;
+import com.lazerycode.jmeter.json.TestConfig;
+import com.lazerycode.jmeter.properties.ConfigurationFiles;
+import com.lazerycode.jmeter.properties.PropertiesFile;
+import com.lazerycode.jmeter.properties.PropertiesMapping;
+
+
+/**
+ * Goal that configures Apache JMeter bundle.&lt;br/&gt;
+ * This goal is also called by other goals.&lt;br/&gt;
+ * This goal runs within Lifecycle phase {@link LifecyclePhase#COMPILE}.
+ */
+@Mojo(name = &quot;configure&quot;, defaultPhase = LifecyclePhase.COMPILE)
+<span class="nc" id="L84">public class ConfigureJMeterMojo extends AbstractJMeterMojo {</span>
+    private static final String DEPENDENCIES_DEFAULT_SEARCH_SCOPE = JavaScopes.RUNTIME;
+	@Component
+	private RepositorySystem repositorySystem;
+
+	@Parameter(defaultValue = &quot;${repositorySystemSession}&quot;, readonly = true)
+	private RepositorySystemSession repositorySystemSession;
+
+	@Parameter(defaultValue = &quot;${project.remoteProjectRepositories}&quot;, readonly = true)
+	private List&lt;RemoteRepository&gt; repositoryList;
+
+	/**
+	 * Name of the base config json file
+	 */
+	private static final String BASE_CONFIG_FILE = &quot;/config.json&quot;;
+
+	/**
+	 * The version of JMeter that this plugin will use to run tests.
+	 * We use a hard coded list of artifacts to configure JMeter locally,
+	 * if you change this version number the list of artifacts required to run JMeter may change.
+	 * If this happens you will need to override the &amp;lt;jmeterArtifacts&amp;gt; element.
+	 */
+	@Parameter(defaultValue = &quot;5.0&quot;)
+	private String jmeterVersion;
+
+	/**
+	 * A list of artifacts that we use to configure JMeter.
+	 * This list is hard coded by default, you can override this list and supply your own list of artifacts for JMeter.
+	 * This would be useful if you want to use a different version of JMeter that has a different list of required artifacts.
+	 * &lt;p/&gt;
+	 * &amp;lt;jmeterArtifacts&amp;gt;
+	 * &amp;nbsp;&amp;nbsp;&amp;lt;artifact&amp;gt;kg.apc:jmeter-plugins:1.3.1&amp;lt;/artifact&amp;gt;
+	 * &amp;lt;jmeterArtifacts&amp;gt;
+	 */
+<span class="nc" id="L118">	@Parameter</span>
+	private List&lt;String&gt; jmeterArtifacts = new ArrayList&lt;&gt;();
+
+    /**
+     * A list of artifacts to exclude.
+     * You can supply your own list of artifacts
+     * This is useful if you want to exclude broken or invalid dependencies
+     * &lt;p/&gt;
+     * &amp;lt;excludedArtifacts&amp;gt;
+     * &amp;lt;exclusion&amp;gt;commons-pool2:commons-pool2&amp;lt;/exclusion&amp;gt;
+     * &amp;lt;exclusion&amp;gt;commons-math3:commons-math3&amp;lt;/exclusion&amp;gt;
+     * &amp;lt;excludedArtifacts&amp;gt;
+     */
+<span class="nc" id="L131">    @Parameter</span>
+    private List&lt;String&gt; excludedArtifacts = new ArrayList&lt;&gt;();
+
+	/**
+	 * A list of artifacts that the plugin should ignore.
+	 * This would be useful if you don't want specific dependencies brought down by JMeter (or any used defined artifacts) copied into the JMeter directory structure.
+	 * &lt;p/&gt;
+	 * &amp;lt;ignoredArtifacts&amp;gt;
+	 * &amp;nbsp;&amp;nbsp;&amp;lt;artifact&amp;gt;org.bouncycastle:bcprov-jdk15on:1.49&amp;lt;/artifact&amp;gt;
+	 * &amp;lt;ignoredArtifacts&amp;gt;
+	 */
+<span class="nc" id="L142">	@Parameter</span>
+	private List&lt;String&gt; ignoredArtifacts = new ArrayList&lt;&gt;();
+
+	/**
+	 * Download all dependencies of files you want to add to lib/ext and copy them to lib/ext too
+	 * &lt;p/&gt;
+	 * &amp;lt;downloadExtensionDependencies&amp;gt;
+	 * &amp;nbsp;&amp;nbsp;&amp;lt;true&amp;gt;
+	 * &amp;lt;downloadExtensionDependencies&amp;gt;
+	 */
+	@Parameter(defaultValue = &quot;true&quot;)
+	protected boolean downloadExtensionDependencies;
+
+	/**
+	 * A list of artifacts that should be copied into the lib/ext directory e.g.
+	 * &lt;p/&gt;
+	 * &amp;lt;jmeterExtensions&amp;gt;
+	 * &amp;nbsp;&amp;nbsp;&amp;lt;artifact&amp;gt;kg.apc:jmeter-plugins:1.3.1&amp;lt;/artifact&amp;gt;
+	 * &amp;lt;jmeterExtensions&amp;gt;
+	 */
+<span class="nc" id="L162">	@Parameter</span>
+	protected List&lt;String&gt; jmeterExtensions = new ArrayList&lt;&gt;();
+
+	/**
+	 * Download all transitive dependencies of the JMeter artifacts.
+	 * &lt;p/&gt;
+	 * &amp;lt;downloadJMeterDependencies&amp;gt;
+	 * &amp;nbsp;&amp;nbsp;&amp;lt;false&amp;gt;
+	 * &amp;lt;downloadJMeterDependencies&amp;gt;
+	 */
+	@Parameter(defaultValue = &quot;false&quot;)
+	protected boolean downloadJMeterDependencies;
+
+	/**
+	 * Download all optional transitive dependencies of artifacts.
+	 * &lt;p/&gt;
+	 * &amp;lt;downloadOptionalDependencies&amp;gt;
+	 * &amp;nbsp;&amp;nbsp;&amp;lt;true&amp;gt;
+	 * &amp;lt;downloadOptionalDependencies&amp;gt;
+	 */
+	@Parameter(defaultValue = &quot;false&quot;)
+	protected boolean downloadOptionalDependencies;
+
+	/**
+	 * Download all dependencies of files you want to add to lib/junit and copy them to lib/junit too
+	 * &lt;p/&gt;
+	 * &amp;lt;downloadLibraryDependencies&amp;gt;
+	 * &amp;nbsp;&amp;nbsp;&amp;lt;true&amp;gt;
+	 * &amp;lt;downloadLibraryDependencies&amp;gt;
+	 */
+	@Parameter(defaultValue = &quot;true&quot;)
+	protected boolean downloadLibraryDependencies;
+
+	/**
+	 * A list of artifacts that should be copied into the lib/junit directory e.g.
+	 * &lt;p/&gt;
+	 * &amp;lt;junitLibraries&amp;gt;
+	 * &amp;nbsp;&amp;nbsp;&amp;lt;artifact&amp;gt;com.foo.project.junit:junit-test:1.0.0&amp;lt;/artifact&amp;gt;
+	 * &amp;lt;junitLibraries&amp;gt;
+	 */
+<span class="nc" id="L202">	@Parameter</span>
+	protected List&lt;String&gt; junitLibraries = new ArrayList&lt;&gt;();
+	
+    /**
+     * A list of artifacts that are used by the test like JMS activemq.
+     * In a Non Maven JMeter configuration, these libraries would be copied into the lib/ directory 
+     * The maven plugin will copy those in lib/ folder of the built jmeter configuration
+     * e.g.
+     * &lt;p/&gt;
+     * &amp;lt;testPlanLibraries&amp;gt;
+     * &amp;nbsp;&amp;nbsp;&amp;lt;artifact&amp;gt;org.apache.activemq:activemq-client:5.15.2&amp;lt;/artifact&amp;gt;
+     * &amp;lt;junitLibraries&amp;gt;
+     */
+<span class="nc" id="L215">    @Parameter</span>
+    protected List&lt;String&gt; testPlanLibraries = new ArrayList&lt;&gt;();
+
+	/**
+	 * Absolute path to JMeter custom (test dependent) properties file.
+	 */
+<span class="nc" id="L221">	@Parameter</span>
+	protected Map&lt;String, String&gt; propertiesJMeter = new HashMap&lt;&gt;();
+
+	/**
+	 * JMeter Properties that are merged with precedence into default JMeter file in saveservice.properties
+	 */
+<span class="nc" id="L227">	@Parameter</span>
+	protected Map&lt;String, String&gt; propertiesSaveService = new HashMap&lt;&gt;();
+
+	/**
+	 * JMeter Properties that are merged with precedence into default JMeter file in reportgenerator.properties
+	 */
+<span class="nc" id="L233">	@Parameter</span>
+	protected Map&lt;String, String&gt; propertiesReportGenerator = new HashMap&lt;&gt;();
+
+	/**
+	 * JMeter Properties that are merged with precedence into default JMeter file in upgrade.properties
+	 */
+<span class="nc" id="L239">	@Parameter</span>
+	protected Map&lt;String, String&gt; propertiesUpgrade = new HashMap&lt;&gt;();
+
+	/**
+	 * JMeter Properties that are merged with precedence into default JMeter file in user.properties
+	 * user.properties takes precedence over jmeter.properties
+	 */
+<span class="nc" id="L246">	@Parameter</span>
+	protected Map&lt;String, String&gt; propertiesUser = new HashMap&lt;&gt;();
+
+	/**
+	 * JMeter Global Properties that override those given in jmeterProps. &lt;br&gt;
+	 * This sets local and remote properties (JMeter's definition of global properties is actually remote properties)
+	 * and overrides any local/remote properties already set
+	 */
+<span class="nc" id="L254">	@Parameter</span>
+	protected Map&lt;String, String&gt; propertiesGlobal = new HashMap&lt;&gt;();
+
+	/**
+	 * (Java) System properties set for the test run.
+	 * Properties are merged with precedence into default JMeter file system.properties
+	 */
+<span class="nc" id="L261">	@Parameter</span>
+	protected Map&lt;String, String&gt; propertiesSystem = new HashMap&lt;&gt;();
+
+	/**
+	 * Path under which .properties files are stored.
+	 * Defaults to ${basedir}/src/test/jmeter
+	 */
+	@Parameter(defaultValue = &quot;${basedir}/src/test/jmeter&quot;)
+	protected File propertiesFilesDirectory;
+
+	/**
+	 * Replace the default JMeter properties with any custom properties files supplied.
+	 * (If set to false any custom properties files will be merged with the default JMeter properties files, custom properties will overwrite default ones)
+	 */
+	@Parameter(defaultValue = &quot;true&quot;)
+	protected boolean propertiesReplacedByCustomFiles;
+
+<span class="nc" id="L278">	private Set&lt;Exclusion&gt; parsedExcludedArtifacts = new HashSet&lt;&gt;();</span>
+    /**
+     * Dependency graph can contain circular references. 
+     * For example: dom4j:dom4j:jar:1.5.2 and jaxen:jaxen:jar:1.1-beta-4
+     * To prevent endless loop and stack overflow, save processed artifacts and check we did not process them previously before processing.
+     * &lt;p&gt;
+     * May be better to use {@link Artifact}, but {@link AbstractArtifact#equals} unreliably depends on local file path. 
+     * So using {@link Exclusion} items
+     * &lt;p&gt; 
+     */
+<span class="nc" id="L288">    private Set&lt;Exclusion&gt; processedArtifacts = new HashSet&lt;&gt;(); </span>
+    
+    /**
+     * After our rework in the lib directory, there are a lot of artifacts with the same groupid, classifier and artifactId, 
+     * but different versions.
+     * This breaks jmeter. 
+     * We will exclude duplicates at the last moment, at the stage of copying. 
+     */
+<span class="nc" id="L296">    private Set&lt;Artifact&gt; copiedArtifacts = new HashSet&lt;&gt;();</span>
+
+//	TODO move customPropertiesFiles here;
+
+	/**
+	 * Set the format of the results generated by JMeter
+	 * Valid values are: xml, csv (CSV set by default).
+	 */
+	@Parameter(defaultValue = &quot;csv&quot;)
+	protected String resultsFileFormat;
+<span class="nc" id="L306">	protected boolean resultsOutputIsCSVFormat = false;</span>
+
+	protected Artifact jmeterConfigArtifact;
+	protected File customPropertiesDirectory;
+	protected File libDirectory;
+	protected File libExtDirectory;
+	protected File libJUnitDirectory;
+
+	 /** Perfana: Name of application that is being tested.
+	   */
+	  @Parameter(property = &quot;jmeter.application&quot;, alias = &quot;ap&quot;, defaultValue = &quot;UNKNOWN_APPLICATION&quot;)
+	  private String application;
+
+	  /**
+	   * Perfana: Test type for this test.
+	   */
+	  @Parameter(property = &quot;jmeter.testType&quot;, alias = &quot;tt&quot;, defaultValue = &quot;UNKNOWN_TEST_TYPE&quot;)
+	  private String testType;
+
+	  /**
+	   * Perfana: Test environment for this test.
+	   */
+	  @Parameter(property = &quot;jmeter.testEnvironment&quot;, alias = &quot;te&quot;, defaultValue = &quot;UNKNOWN_TEST_ENVIRONMENT&quot;)
+	  private String testEnvironment;
+
+	  /**
+	   * Perfana: Test run id.
+	   */
+	  @Parameter(property = &quot;jmeter.testRunId&quot;, alias = &quot;tid&quot;, defaultValue = &quot;UNKNOWN_TEST_RUN_ID&quot;)
+	  private String testRunId;
+
+	  /**
+	   * Perfana: Build results url where to find the results of this load test.
+	   */
+	  @Parameter(property = &quot;jmeter.CIBuildResultsUrl&quot;, alias = &quot;url&quot;, defaultValue = &quot;&quot;)
+	  private String CIBuildResultsUrl;
+
+	  /**
+	   * Perfana: Perfana url.
+	   */
+	  @Parameter(property = &quot;jmeter.perfanaUrl&quot;, alias = &quot;iourl&quot;, defaultValue = &quot;UNKNOWN_PERFANA_URL&quot;)
+	  private String perfanaUrl;
+
+	  /**
+	   * Perfana: the release number of the application.
+	   */
+	  @Parameter(property = &quot;jmeter.applicationRelease&quot;, alias = &quot;pr&quot;, defaultValue = &quot;&quot;)
+	  private String applicationRelease;
+
+	  /**
+	   * Perfana: Rampup time in seconds.
+	   */
+	  @Parameter(property = &quot;jmeter.rampupTimeInSeconds&quot;, alias = &quot;rt&quot;, defaultValue = &quot;&quot;)
+	  private String rampupTimeInSeconds;
+
+	  /**
+	   * Perfana: Constan load time in seconds.
+	   */
+	  @Parameter(property = &quot;jmeter.constantLoadTimeInSeconds&quot;, alias = &quot;pd&quot;, defaultValue = &quot;&quot;)
+	  private String constantLoadTimeInSeconds;
+
+	  /**
+	   * Perfana: Parse the Perfana test asserts and fail build it not ok.
+	   */
+	  @Parameter(property = &quot;jmeter.assertResultsEnabled&quot;, alias = &quot;ar&quot;, defaultValue = &quot;false&quot;)
+	  private boolean assertResultsEnabled;
+
+	  /**
+	   * Perfana: Enable calls to Perfana.
+	   */
+	  @Parameter(property = &quot;jmeter.perfanaEnabled&quot;, alias = &quot;tie&quot;, defaultValue = &quot;false&quot;)
+	  private boolean perfanaEnabled;
+
+	  /**
+	   * Perfana: test run annotiations passed via environment variable
+	   */
+	  @Parameter(property = &quot;jmeter.annotations&quot;, alias = &quot;ann&quot;, defaultValue = &quot;&quot;)
+	  private String annotations;
+
+	  /**
+	   * Perfana: test run variables passed via environment variable
+	   */
+	  @Parameter(property = &quot;jmeter.variables&quot;)
+	  private Properties variables;
+	/**
+	 * Configure a local instance of JMeter
+	 *
+	 * @throws MojoExecutionException
+	 * @throws MojoFailureException
+	 * @throws java.io.IOException 
+	 */
+	@Override
+	public void doExecute() throws MojoExecutionException, MojoFailureException, java.io.IOException {
+<span class="nc" id="L399">	    processedArtifacts.clear();</span>
+<span class="nc" id="L400">	    parsedExcludedArtifacts.clear();</span>
+<span class="nc" id="L401">	    JMeterConfigurationHolder.getInstance().resetConfiguration();</span>
+<span class="nc" id="L402">	    setupExcludedArtifacts(excludedArtifacts);</span>
+<span class="nc" id="L403">		getLog().info(LINE_SEPARATOR);</span>
+<span class="nc" id="L404">		getLog().info(&quot; Configuring JMeter...&quot;);</span>
+<span class="nc" id="L405">		getLog().info(LINE_SEPARATOR);</span>
+<span class="nc" id="L406">		getLog().info(&quot; Building JMeter directory structure...&quot;);</span>
+<span class="nc" id="L407">		generateJMeterDirectoryTree();</span>
+<span class="nc" id="L408">		getLog().info(&quot; Configuring JMeter artifacts :&quot;+jmeterArtifacts);</span>
+<span class="nc" id="L409">		configureJMeterArtifacts();</span>
+<span class="nc" id="L410">		getLog().info(&quot; Populating JMeter directory ...&quot;);</span>
+<span class="nc" id="L411">		populateJMeterDirectoryTree();</span>
+<span class="nc" id="L412">		getLog().info(&quot; Copying extensions &quot;+jmeterExtensions+&quot; to JMeter lib/ext directory &quot;</span>
+		        +libExtDirectory+&quot; with downloadExtensionDependencies set to &quot;+downloadExtensionDependencies+&quot; ...&quot;);
+<span class="nc" id="L414">		copyExplicitLibraries(jmeterExtensions, libExtDirectory, downloadExtensionDependencies);</span>
+<span class="nc" id="L415">        getLog().info(&quot; Copying  JUnit libraries &quot;+junitLibraries+&quot; to JMeter junit lib directory &quot;</span>
+                +libJUnitDirectory+&quot; with downloadLibraryDependencies set to &quot;+downloadLibraryDependencies+&quot; ...&quot;);
+<span class="nc" id="L417">		copyExplicitLibraries(junitLibraries, libJUnitDirectory, downloadLibraryDependencies);</span>
+<span class="nc" id="L418">        getLog().info(&quot; Copying test libraries &quot;+testPlanLibraries+&quot; to JMeter lib directory &quot;</span>
+                +libDirectory+&quot; with downloadLibraryDependencies set to &quot;+downloadLibraryDependencies+&quot; ...&quot;);
+<span class="nc" id="L420">		copyExplicitLibraries(testPlanLibraries, libDirectory, downloadLibraryDependencies);</span>
+<span class="nc" id="L421">		getLog().info(&quot; Configuring jmeter properties ...&quot;);</span>
+<span class="nc" id="L422">		configurePropertiesFiles();</span>
+<span class="nc" id="L423">		getLog().info(&quot; Generating JSON Test config ...&quot;);</span>
+<span class="nc" id="L424">		generateTestConfig();</span>
+<span class="nc" id="L425">		JMeterConfigurationHolder.getInstance().freezeConfiguration();</span>
+		/*
+		 if (skip) {
+		      getLog().info(&quot;Skipping gatling-maven-plugin&quot;);
+		      return;
+		    }*/
+
+		    final ScheduledExecutorService exec;
+<span class="nc bnc" id="L433" title="All 2 branches missed.">		    final PerfanaClient perfanaClient = perfanaEnabled</span>
+<span class="nc" id="L434">		            ? createPerfanaClient()</span>
+		            : null;
+
+<span class="nc bnc" id="L437" title="All 2 branches missed.">		    if (perfanaEnabled) {</span>
+<span class="nc" id="L438">		      final int periodInSeconds = 15;</span>
+<span class="nc" id="L439">		      getLog().info(String.format(&quot;Calling Perfana (%s) keep alive every %d seconds.&quot;, perfanaUrl, periodInSeconds));</span>
+<span class="nc" id="L440">		      final PerfanaClient.KeepAliveRunner keepAliveRunner = new PerfanaClient.KeepAliveRunner(perfanaClient);</span>
+<span class="nc" id="L441">		      exec = Executors.newSingleThreadScheduledExecutor();</span>
+<span class="nc" id="L442">		      exec.scheduleAtFixedRate(keepAliveRunner, 0, periodInSeconds, TimeUnit.SECONDS);</span>
+<span class="nc" id="L443">		    }</span>
+		    else {
+<span class="nc" id="L445">		      exec = null;</span>
+		    }
+		    
+<span class="nc bnc" id="L448" title="All 2 branches missed.">		    if (perfanaEnabled) {</span>
+<span class="nc" id="L449">		        perfanaClient.callPerfana(true);</span>
+<span class="nc bnc" id="L450" title="All 2 branches missed.">		        if (assertResultsEnabled) {</span>
+		          try {
+<span class="nc" id="L452">		            assertResultsPerfana(perfanaClient);</span>
+<span class="nc" id="L453">		          } catch (IOException e) {</span>
+<span class="nc" id="L454">		            throw new MojoExecutionException(&quot;Perfana assertions check failed. &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L455">		          }</span>
+		        }
+		        else {
+<span class="nc" id="L458">		          getLog().info(&quot;Perfana assertions disabled.&quot;);</span>
+		        }
+		      }
+			
+<span class="nc" id="L462">	}</span>
+	
+	  /**
+	   * Call the target io assertions and let build fail when not OK
+	   * @throws MojoExecutionException when the assertion check fails or
+	   * a technical issue occurs
+	   * @param perfanaClient call this client
+	   */
+
+
+<span class="nc" id="L472">	  Configuration config = Configuration.defaultConfiguration()</span>
+<span class="nc" id="L473">	          .addOptions(Option.SUPPRESS_EXCEPTIONS);</span>
+
+	  private void assertResultsPerfana(PerfanaClient perfanaClient) throws MojoExecutionException, IOException, java.io.IOException {
+<span class="nc" id="L476">	    final String assertions = perfanaClient.callCheckAsserts();</span>
+<span class="nc bnc" id="L477" title="All 2 branches missed.">	    if (assertions == null) {</span>
+<span class="nc" id="L478">	      throw new MojoExecutionException(&quot;Perfana assertions could not be checked, received null&quot;);</span>
+	    }
+
+
+<span class="nc" id="L482">	    Boolean benchmarkBaselineTestRunResult = JsonPath.using(config).parse(assertions).read(&quot;$.benchmarkBaselineTestRun.result&quot;);</span>
+<span class="nc" id="L483">	    String benchmarkBaselineTestRunDeeplink = JsonPath.using(config).parse(assertions).read(&quot;$.benchmarkBaselineTestRun.deeplink&quot;);</span>
+<span class="nc" id="L484">	    Boolean benchmarkPreviousTestRunResult = JsonPath.using(config).parse(assertions).read(&quot;$.benchmarkPreviousTestRun.result&quot;);</span>
+<span class="nc" id="L485">	    String benchmarkPreviousTestRunDeeplink = JsonPath.using(config).parse(assertions).read(&quot;$.benchmarkPreviousTestRun.deeplink&quot;);</span>
+<span class="nc" id="L486">	    Boolean requirementsResult = JsonPath.using(config).parse(assertions).read(&quot;$.requirements.result&quot;);</span>
+<span class="nc" id="L487">	    String requirementsDeeplink = JsonPath.using(config).parse(assertions).read(&quot;$.requirements.deeplink&quot;);</span>
+
+<span class="nc" id="L489">	    getLog().info(&quot;benchmarkBaselineTestRunResult: &quot;  + benchmarkBaselineTestRunResult);</span>
+<span class="nc" id="L490">	    getLog().info(&quot;benchmarkPreviousTestRunResult: &quot; + benchmarkPreviousTestRunResult);</span>
+<span class="nc" id="L491">	    getLog().info(&quot;requirementsResult: &quot; + requirementsResult);</span>
+
+<span class="nc bnc" id="L493" title="All 2 branches missed.">	    if (assertions.contains(&quot;false&quot;)) {</span>
+
+<span class="nc" id="L495">	      String assertionText = &quot;One or more Perfana assertions are failing: \n&quot;;</span>
+<span class="nc bnc" id="L496" title="All 4 branches missed.">	      if(requirementsResult != null &amp;&amp; requirementsResult == false) assertionText += &quot;Requirements failed: &quot; + requirementsDeeplink + &quot;\n&quot;;</span>
+<span class="nc bnc" id="L497" title="All 4 branches missed.">	      if(benchmarkPreviousTestRunResult != null &amp;&amp; benchmarkPreviousTestRunResult == false) assertionText += &quot;Benchmark to previous test run failed: &quot; + benchmarkPreviousTestRunDeeplink + &quot;\n&quot;;</span>
+<span class="nc bnc" id="L498" title="All 4 branches missed.">	      if(benchmarkBaselineTestRunResult != null &amp;&amp; benchmarkBaselineTestRunResult == false) assertionText += &quot;Benchmark to baseline test run failed: &quot; + benchmarkBaselineTestRunDeeplink;</span>
+
+<span class="nc" id="L500">	      getLog().info(&quot;assertionText: &quot; + assertionText);</span>
+
+<span class="nc" id="L502">	      throw new MojoExecutionException( assertionText );</span>
+	    }
+	    else {
+
+<span class="nc" id="L506">	      String assertionText = &quot;All Perfana assertions are OK: \n&quot;;</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">	      if(requirementsResult) assertionText += requirementsDeeplink + &quot;\n&quot;;</span>
+<span class="nc bnc" id="L508" title="All 2 branches missed.">	      if(benchmarkPreviousTestRunResult) assertionText += benchmarkPreviousTestRunDeeplink + &quot;\n&quot;;</span>
+<span class="nc bnc" id="L509" title="All 2 branches missed.">	      if(benchmarkBaselineTestRunResult) assertionText += benchmarkBaselineTestRunDeeplink;</span>
+
+<span class="nc" id="L511">	      getLog().info(assertionText);</span>
+	    }
+<span class="nc" id="L513">	  }</span>
+	
+	 private PerfanaClient createPerfanaClient() {
+<span class="nc" id="L516">		    PerfanaClient client = new PerfanaClient(application, testType, testEnvironment, testRunId, CIBuildResultsUrl, applicationRelease, rampupTimeInSeconds, constantLoadTimeInSeconds, perfanaUrl, annotations, variables);</span>
+<span class="nc" id="L517">		    client.injectLogger(new PerfanaClient.Logger() {</span>
+		      @Override
+		      public void info(String message) {
+<span class="nc" id="L520">		        getLog().info(message);</span>
+<span class="nc" id="L521">		      }</span>
+
+		      @Override
+		      public void warn(String message) {
+<span class="nc" id="L525">		        getLog().warn(message);</span>
+<span class="nc" id="L526">		      }</span>
+
+		      @Override
+		      public void error(String message) {
+<span class="nc" id="L530">		        getLog().error(message);</span>
+<span class="nc" id="L531">		      }</span>
+
+		      @Override
+		      public void debug(final String message) {
+<span class="nc" id="L535">		        getLog().debug(message);</span>
+<span class="nc" id="L536">		      }</span>
+		    });
+<span class="nc" id="L538">		    return client;</span>
+		  }
+
+	/**
+	 * Parses excludedArtifactsAsString and fills parsedExcludedArtifacts
+	 * @param excludedArtifactsAsString List of exclusion
+	 */
+	private void setupExcludedArtifacts(List&lt;String&gt; excludedArtifactsAsString) {
+<span class="nc bnc" id="L546" title="All 2 branches missed.">	    for (String exclusion : excludedArtifactsAsString) {</span>
+<span class="nc" id="L547">	        String[] exclusionParts = exclusion.split(&quot;:&quot;);  </span>
+<span class="nc bnc" id="L548" title="All 4 branches missed.">	        parsedExcludedArtifacts.add(</span>
+	                new Exclusion(exclusionParts[0], 
+	                        exclusionParts[1], 
+	                        exclusionParts.length&gt;2 ? exclusionParts[2] : null, 
+	                        exclusionParts.length&gt;3 ? exclusionParts[3] : null));
+<span class="nc" id="L553">        }</span>
+<span class="nc" id="L554">    }</span>
+
+    /**
+	 * Generate the directory tree utilised by JMeter.
+	 */
+	private void generateJMeterDirectoryTree() {
+<span class="nc" id="L560">		File workingDirectory = new File(jmeterDirectory, &quot;bin&quot;);</span>
+<span class="nc" id="L561">		workingDirectory.mkdirs();</span>
+<span class="nc" id="L562">		JMeterConfigurationHolder.getInstance().setWorkingDirectory(workingDirectory);</span>
+<span class="nc" id="L563">		customPropertiesDirectory = new File(jmeterDirectory, &quot;custom_properties&quot;);</span>
+<span class="nc" id="L564">		customPropertiesDirectory.mkdirs();</span>
+<span class="nc" id="L565">		libDirectory = new File(jmeterDirectory, &quot;lib&quot;);</span>
+<span class="nc" id="L566">		libExtDirectory = new File(libDirectory, &quot;ext&quot;);</span>
+<span class="nc" id="L567">		libExtDirectory.mkdirs();</span>
+<span class="nc" id="L568">		libJUnitDirectory = new File(libDirectory, &quot;junit&quot;);</span>
+<span class="nc" id="L569">		libJUnitDirectory.mkdirs();</span>
+<span class="nc" id="L570">		testFilesBuildDirectory.mkdirs();</span>
+<span class="nc" id="L571">		resultsDirectory.mkdirs();</span>
+<span class="nc bnc" id="L572" title="All 2 branches missed.">		if(generateReports) {</span>
+<span class="nc" id="L573">		    reportDirectory.mkdirs();</span>
+		}
+<span class="nc" id="L575">		logsDirectory.mkdirs();</span>
+<span class="nc" id="L576">	}</span>
+
+	private void configurePropertiesFiles() throws MojoExecutionException {
+<span class="nc" id="L579">	    Map&lt;ConfigurationFiles, PropertiesMapping&gt; propertiesMap = </span>
+	            new EnumMap&lt;&gt;(ConfigurationFiles.class);
+<span class="nc" id="L581">	    JMeterConfigurationHolder.getInstance().setPropertiesMap(propertiesMap);</span>
+<span class="nc" id="L582">		propertiesMap.put(JMETER_PROPERTIES, new PropertiesMapping(propertiesJMeter));</span>
+<span class="nc" id="L583">		propertiesMap.put(SAVE_SERVICE_PROPERTIES, new PropertiesMapping(propertiesSaveService));</span>
+<span class="nc" id="L584">		propertiesMap.put(UPGRADE_PROPERTIES, new PropertiesMapping(propertiesUpgrade));</span>
+<span class="nc" id="L585">		propertiesMap.put(SYSTEM_PROPERTIES, new PropertiesMapping(propertiesSystem));</span>
+<span class="nc" id="L586">		propertiesMap.put(REPORT_GENERATOR_PROPERTIES, new PropertiesMapping(propertiesReportGenerator));</span>
+<span class="nc" id="L587">		propertiesMap.put(USER_PROPERTIES, new PropertiesMapping(propertiesUser));</span>
+<span class="nc" id="L588">		propertiesMap.put(GLOBAL_PROPERTIES, new PropertiesMapping(propertiesGlobal));</span>
+
+<span class="nc" id="L590">		setJMeterResultFileFormat();</span>
+
+<span class="nc bnc" id="L592" title="All 2 branches missed.">		for (ConfigurationFiles configurationFile : values()) {</span>
+<span class="nc" id="L593">			File suppliedPropertiesFile = new File(propertiesFilesDirectory, configurationFile.getFilename());</span>
+<span class="nc" id="L594">			File propertiesFileToWrite = new File(</span>
+<span class="nc" id="L595">			        JMeterConfigurationHolder.getInstance().getWorkingDirectory(), configurationFile.getFilename());</span>
+
+<span class="nc" id="L597">			PropertiesFile somePropertiesFile = new PropertiesFile(jmeterConfigArtifact, configurationFile);</span>
+<span class="nc" id="L598">			somePropertiesFile.loadProvidedPropertiesIfAvailable(suppliedPropertiesFile, propertiesReplacedByCustomFiles);</span>
+<span class="nc" id="L599">			somePropertiesFile.addAndOverwriteProperties(propertiesMap.get(configurationFile).getAdditionalProperties());</span>
+<span class="nc" id="L600">			somePropertiesFile.writePropertiesToFile(propertiesFileToWrite);</span>
+
+<span class="nc" id="L602">			propertiesMap.get(configurationFile).setPropertiesFile(somePropertiesFile);</span>
+		}
+
+<span class="nc bnc" id="L605" title="All 2 branches missed.">		for (File customPropertiesFile : customPropertiesFiles) {</span>
+<span class="nc" id="L606">			PropertiesFile customProperties = new PropertiesFile(customPropertiesFile);</span>
+<span class="nc" id="L607">			String customPropertiesFilename = </span>
+<span class="nc" id="L608">			        FilenameUtils.getBaseName(customPropertiesFile.getName()) </span>
+<span class="nc" id="L609">			        + &quot;-&quot; + UUID.randomUUID().toString() </span>
+<span class="nc" id="L610">			        + &quot;.&quot; + FilenameUtils.getExtension(customPropertiesFile.getName());</span>
+<span class="nc" id="L611">			customProperties.writePropertiesToFile(new File(customPropertiesDirectory, customPropertiesFilename));</span>
+<span class="nc" id="L612">		}</span>
+
+<span class="nc" id="L614">		setDefaultPluginProperties(JMeterConfigurationHolder.getInstance().getWorkingDirectory().getAbsolutePath());</span>
+<span class="nc" id="L615">	}</span>
+
+	protected void generateTestConfig() throws MojoExecutionException {
+<span class="nc" id="L618">	    try (InputStream configFile = this.getClass().getResourceAsStream(BASE_CONFIG_FILE)) {</span>
+<span class="nc" id="L619">    		TestConfig testConfig = new TestConfig(configFile);</span>
+<span class="nc" id="L620">    		testConfig.setResultsOutputIsCSVFormat(resultsOutputIsCSVFormat);</span>
+<span class="nc" id="L621">    		testConfig.setGenerateReports(generateReports);</span>
+<span class="nc" id="L622">    		testConfig.writeResultFilesConfigTo(testConfigFile);</span>
+<span class="nc" id="L623">	    } catch(java.io.IOException ex) {</span>
+<span class="nc" id="L624">	        throw new MojoExecutionException(&quot;Exception creating TestConfig&quot;, ex);</span>
+<span class="nc" id="L625">	    }</span>
+<span class="nc" id="L626">	}</span>
+
+	protected void setJMeterResultFileFormat() {
+<span class="nc bnc" id="L629" title="All 4 branches missed.">		if (generateReports || &quot;csv&quot;.equalsIgnoreCase(resultsFileFormat)) {</span>
+<span class="nc" id="L630">			propertiesJMeter.put(&quot;jmeter.save.saveservice.output_format&quot;, &quot;csv&quot;);</span>
+<span class="nc" id="L631">			resultsOutputIsCSVFormat = true;</span>
+		} else {
+<span class="nc" id="L633">			propertiesJMeter.put(&quot;jmeter.save.saveservice.output_format&quot;, &quot;xml&quot;);</span>
+<span class="nc" id="L634">			resultsOutputIsCSVFormat = false;</span>
+		}
+<span class="nc" id="L636">	}</span>
+
+
+	public void setDefaultPluginProperties(String userDirectory) {
+		//JMeter uses the system property &quot;user.dir&quot; to set its base working directory
+<span class="nc" id="L641">		System.setProperty(&quot;user.dir&quot;, userDirectory);</span>
+		//Prevent JMeter from throwing some System.exit() calls
+<span class="nc" id="L643">		System.setProperty(&quot;jmeterengine.remote.system.exit&quot;, &quot;false&quot;);</span>
+<span class="nc" id="L644">		System.setProperty(&quot;jmeterengine.stopfail.system.exit&quot;, &quot;false&quot;);</span>
+<span class="nc" id="L645">	}</span>
+
+	/**
+	 * This sets the default list of artifacts that we use to set up a local instance of JMeter.
+	 * We only use this default list if &amp;lt;jmeterArtifacts&amp;gt; has not been overridden in the POM.
+	 */
+	private void configureJMeterArtifacts() {
+<span class="nc bnc" id="L652" title="All 2 branches missed.">		if (jmeterArtifacts.isEmpty()) {</span>
+<span class="nc" id="L653">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter:&quot; + jmeterVersion);</span>
+<span class="nc" id="L654">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_components:&quot; + jmeterVersion);</span>
+<span class="nc" id="L655">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_config:&quot; + jmeterVersion);</span>
+<span class="nc" id="L656">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_core:&quot; + jmeterVersion);</span>
+<span class="nc" id="L657">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_ftp:&quot; + jmeterVersion);</span>
+<span class="nc" id="L658">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_functions:&quot; + jmeterVersion);</span>
+<span class="nc" id="L659">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_http:&quot; + jmeterVersion);</span>
+<span class="nc" id="L660">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_java:&quot; + jmeterVersion);</span>
+<span class="nc" id="L661">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_jdbc:&quot; + jmeterVersion);</span>
+<span class="nc" id="L662">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_jms:&quot; + jmeterVersion);</span>
+<span class="nc" id="L663">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_junit:&quot; + jmeterVersion);</span>
+<span class="nc" id="L664">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_ldap:&quot; + jmeterVersion);</span>
+<span class="nc" id="L665">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_mail:&quot; + jmeterVersion);</span>
+<span class="nc" id="L666">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_mongodb:&quot; + jmeterVersion);</span>
+<span class="nc" id="L667">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_native:&quot; + jmeterVersion);</span>
+<span class="nc" id="L668">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:ApacheJMeter_tcp:&quot; + jmeterVersion);</span>
+<span class="nc" id="L669">			jmeterArtifacts.add(JMETER_GROUP_ID + &quot;:jorphan:&quot; + jmeterVersion);</span>
+		}
+<span class="nc" id="L671">	}</span>
+
+	private void populateJMeterDirectoryTree() throws DependencyResolutionException, IOException {
+<span class="nc bnc" id="L674" title="All 2 branches missed.">		if (jmeterArtifacts.isEmpty()) {</span>
+<span class="nc" id="L675">			throw new DependencyResolutionException(&quot;No JMeter dependencies specified!, check jmeterArtifacts and jmeterVersion elements&quot;);</span>
+		}
+<span class="nc bnc" id="L677" title="All 2 branches missed.">		for (String desiredArtifact : jmeterArtifacts) {</span>
+<span class="nc" id="L678">			Artifact returnedArtifact = getArtifactResult(new DefaultArtifact(desiredArtifact));</span>
+<span class="nc bnc" id="L679" title="All 4 branches missed.">			switch (returnedArtifact.getArtifactId()) {</span>
+				case JMETER_CONFIG_ARTIFACT_NAME:
+<span class="nc" id="L681">					jmeterConfigArtifact = returnedArtifact;</span>
+<span class="nc" id="L682">					extractConfigSettings(jmeterConfigArtifact);</span>
+<span class="nc" id="L683">					break;</span>
+				case JORPHAN_ARTIFACT_NAME:
+<span class="nc" id="L685">                    copyArtifact(returnedArtifact, libDirectory);</span>
+<span class="nc" id="L686">                    copyTransitiveRuntimeDependenciesToLibDirectory(returnedArtifact, downloadJMeterDependencies);</span>
+<span class="nc" id="L687">                    break;</span>
+				case JMETER_ARTIFACT_NAME:
+<span class="nc" id="L689">				    JMeterConfigurationHolder.getInstance().setRuntimeJarName(returnedArtifact.getFile().getName());</span>
+<span class="nc" id="L690">					copyArtifact(returnedArtifact, JMeterConfigurationHolder.getInstance().getWorkingDirectory());</span>
+<span class="nc" id="L691">					copyTransitiveRuntimeDependenciesToLibDirectory(returnedArtifact, downloadJMeterDependencies);</span>
+<span class="nc" id="L692">					break;</span>
+				default:
+<span class="nc" id="L694">					copyArtifact(returnedArtifact, libExtDirectory);</span>
+<span class="nc" id="L695">					copyTransitiveRuntimeDependenciesToLibDirectory(returnedArtifact, downloadJMeterDependencies);</span>
+			}
+<span class="nc" id="L697">		}</span>
+
+<span class="nc bnc" id="L699" title="All 2 branches missed.">		if (confFilesDirectory.exists()) {</span>
+<span class="nc" id="L700">			copyFilesInTestDirectory(confFilesDirectory, new File(jmeterDirectory, &quot;bin&quot;));</span>
+		}
+<span class="nc" id="L702">	}</span>
+
+	/**
+	 * Copy a list of libraries to a specific folder.
+	 *
+	 * @param desiredArtifacts A list of artifacts
+	 * @param destination      A destination folder to copy these artifacts to
+	 * @param downloadDependencies Do we download dependencies
+	 * @throws DependencyResolutionException
+	 * @throws IOException
+	 */
+	private void copyExplicitLibraries(List&lt;String&gt; desiredArtifacts, File destination, boolean downloadDependencies) throws DependencyResolutionException, IOException {
+<span class="nc bnc" id="L714" title="All 2 branches missed.">		for (String desiredArtifact : desiredArtifacts) {</span>
+<span class="nc" id="L715">            copyExplicitLibraries(desiredArtifact, destination, downloadDependencies);</span>
+<span class="nc" id="L716">        }</span>
+<span class="nc" id="L717">    }</span>
+
+	/**
+	 * 
+	 * @param desiredArtifact  Artifact to copy
+     * @param destination      A destination folder to copy these artifacts to
+     * @param downloadDependencies Do we download dependencies
+	 * @throws DependencyResolutionException
+	 * @throws IOException
+	 */
+    private void copyExplicitLibraries(String desiredArtifact, File destination, boolean downloadDependencies)
+            throws DependencyResolutionException, IOException {
+<span class="nc" id="L729">        Artifact returnedArtifact = getArtifactResult(new DefaultArtifact(desiredArtifact));</span>
+<span class="nc" id="L730">        copyArtifact(returnedArtifact, destination);</span>
+<span class="nc bnc" id="L731" title="All 2 branches missed.">        if (downloadDependencies) {</span>
+<span class="nc" id="L732">            resolveTestDependenciesAndCopyWithTransitivity(returnedArtifact, true);</span>
+        }
+<span class="nc" id="L734">    }</span>
+	
+	/**
+	 * Find a specific artifact in a remote repository
+	 *
+	 * @param desiredArtifact The artifact that we want to find
+	 * @return Will return an ArtifactResult object
+	 * @throws DependencyResolutionException
+	 */
+	private Artifact getArtifactResult(Artifact desiredArtifact) 
+	        throws DependencyResolutionException {// NOSONAR
+<span class="nc" id="L745">		ArtifactRequest artifactRequest = new ArtifactRequest();</span>
+<span class="nc" id="L746">		artifactRequest.setArtifact(desiredArtifact);</span>
+<span class="nc" id="L747">		artifactRequest.setRepositories(repositoryList);</span>
+		try {
+<span class="nc" id="L749">			return repositorySystem.resolveArtifact(repositorySystemSession, artifactRequest).getArtifact();</span>
+<span class="nc" id="L750">		} catch (ArtifactResolutionException e) {</span>
+<span class="nc" id="L751">			throw new DependencyResolutionException(e.getMessage(), e);</span>
+		}
+	}
+
+	/**
+	 * 
+	 * @param artifact {@link Artifact}
+	 * @param getDependenciesOfDependency get dependencies of dependency
+	 * @throws DependencyResolutionException
+	 * @throws IOException
+	 */
+    private void resolveTestDependenciesAndCopyWithTransitivity(Artifact artifact, boolean getDependenciesOfDependency) throws DependencyResolutionException, IOException {
+<span class="nc" id="L763">        ArtifactDescriptorRequest request = new ArtifactDescriptorRequest(artifact, repositoryList, null);</span>
+        try {
+<span class="nc" id="L765">            ArtifactDescriptorResult result = repositorySystem.readArtifactDescriptor(repositorySystemSession, request);</span>
+<span class="nc bnc" id="L766" title="All 2 branches missed.">            for (Dependency dep: result.getDependencies()){</span>
+                // Here we can not filter dependencies by scope. 
+                // we need to use dependencies with any scope, because tests are needed to test, 
+                // and provided, and especially compile-scoped dependencies  
+<span class="nc" id="L770">                ArtifactResult artifactResult = repositorySystem.resolveArtifact(repositorySystemSession,</span>
+<span class="nc" id="L771">                        new ArtifactRequest(dep.getArtifact(), repositoryList, null));</span>
+<span class="nc bnc" id="L772" title="All 2 branches missed.">                if(isLibraryArtifact(artifactResult.getArtifact())){</span>
+<span class="nc" id="L773">                    copyArtifact(artifactResult.getArtifact(), libDirectory);</span>
+                } else {
+<span class="nc" id="L775">                    getLog().debug(&quot;Artifact &quot;+artifactResult.getArtifact()+&quot; is not a library, ignoring&quot;);</span>
+                }
+<span class="nc" id="L777">                copyTransitiveRuntimeDependenciesToLibDirectory(dep, getDependenciesOfDependency);</span>
+<span class="nc" id="L778">            }</span>
+<span class="nc" id="L779">        } catch (ArtifactDescriptorException | ArtifactResolutionException e) {</span>
+<span class="nc" id="L780">            throw new DependencyResolutionException(e.getMessage(), e);</span>
+<span class="nc" id="L781">        }   </span>
+<span class="nc" id="L782">    }</span>
+
+    /**
+     * Collate a list of transitive runtime dependencies that need to be copied to the /lib directory and then copy them there.
+     *
+     * @param artifact The artifact that is a transitive dependency
+     * @param getDependenciesOfDependency get dependencies of dependency
+     * @throws DependencyResolutionException
+     * @throws IOException
+     */
+    private void copyTransitiveRuntimeDependenciesToLibDirectory(Artifact artifact, boolean getDependenciesOfDependency) throws DependencyResolutionException, IOException {
+<span class="nc" id="L793">        copyTransitiveRuntimeDependenciesToLibDirectory(new Dependency(artifact, DEPENDENCIES_DEFAULT_SEARCH_SCOPE), getDependenciesOfDependency); </span>
+<span class="nc" id="L794">    }</span>
+    
+	/**
+	 * Collate a list of transitive runtime dependencies that need to be copied to the /lib directory and then copy them there.
+	 *
+	 * @param rootDependency {@link Dependency} The artifact that is a transitive dependency
+	 * @param getDependenciesOfDependency get dependencies of dependency
+	 * @throws DependencyResolutionException
+	 * @throws IOException
+	 */
+	private void copyTransitiveRuntimeDependenciesToLibDirectory(Dependency rootDependency, boolean getDependenciesOfDependency) 
+	        throws DependencyResolutionException, IOException {
+<span class="nc" id="L806">		CollectRequest collectRequest = new CollectRequest();</span>
+<span class="nc" id="L807">		collectRequest.setRoot(rootDependency);</span>
+<span class="nc" id="L808">		collectRequest.setRepositories(repositoryList);</span>
+		// In #classpathFilter, we are not actually passing the scope, but the classpath identifier (just using the same enum as for the scope).
+        // That is, for example, for a test classpath, dependencies are required with any scope (that is, the TEST filter is the softest)
+		
+<span class="nc" id="L812">		DependencyFilter dependencyFilter = </span>
+<span class="nc" id="L813">		        DependencyFilterUtils.andFilter(DependencyFilterUtils.classpathFilter(DEPENDENCIES_DEFAULT_SEARCH_SCOPE),</span>
+		                (DependencyNode dependencyNode, List&lt;DependencyNode&gt; arg1) -&gt; {
+<span class="nc" id="L815">                                Artifact artifact = dependencyNode.getArtifact();</span>
+<span class="nc bnc" id="L816" title="All 2 branches missed.">                                if (dependencyNode.getDependency().isOptional()) {</span>
+<span class="nc" id="L817">                                    getLog().debug(&quot;Filtering dependency &quot;+dependencyNode.getDependency());</span>
+<span class="nc" id="L818">                                    return false;</span>
+                                }
+<span class="nc bnc" id="L820" title="All 2 branches missed.">                                for(Exclusion currentExclusion: parsedExcludedArtifacts){</span>
+<span class="nc bnc" id="L821" title="All 2 branches missed.">                                    if (currentExclusion.getGroupId().equals(artifact.getGroupId()) &amp;&amp;</span>
+<span class="nc bnc" id="L822" title="All 2 branches missed.">                                            (currentExclusion.getArtifactId().equals(artifact.getArtifactId())) </span>
+<span class="nc bnc" id="L823" title="All 2 branches missed.">                                            || (currentExclusion.getArtifactId().equals(&quot;*&quot;))){</span>
+<span class="nc" id="L824">                                        getLog().debug(&quot;Filtering excluded dependency &quot;+dependencyNode.getDependency());</span>
+<span class="nc" id="L825">                                        return false;</span>
+                                    }
+<span class="nc" id="L827">                                }</span>
+<span class="nc" id="L828">                                return true;</span>
+                            });
+<span class="nc" id="L830">		DependencyRequest dependencyRequest = new DependencyRequest(collectRequest, dependencyFilter);</span>
+
+<span class="nc bnc" id="L832" title="All 2 branches missed.">        if (getLog().isDebugEnabled()) {</span>
+<span class="nc" id="L833">            getLog().debug(&quot;Root dependency name: &quot; + rootDependency.toString());</span>
+<span class="nc bnc" id="L834" title="All 4 branches missed.">            if ((dependencyRequest.getCollectRequest() != null) &amp;&amp; (dependencyRequest.getCollectRequest().getTrace() != null)){</span>
+<span class="nc" id="L835">                getLog().debug(&quot;Root dependency request trace: &quot; + dependencyRequest.getCollectRequest().getTrace().toString());</span>
+            }
+<span class="nc" id="L837">            getLog().debug(&quot;Root dependency exclusions: &quot; + rootDependency.getExclusions());</span>
+<span class="nc" id="L838">            getLog().debug(LINE_SEPARATOR);</span>
+        }
+		try {
+		    // here we can not resolve, since exclusions can be caught, which are therefore excluded, which are absent in the repositories.
+<span class="nc" id="L842">		    List&lt;DependencyNode&gt; artifactDependencyNodes = </span>
+<span class="nc" id="L843">		            repositorySystem.collectDependencies(repositorySystemSession, collectRequest).getRoot().getChildren();</span>
+<span class="nc bnc" id="L844" title="All 2 branches missed.">			for (DependencyNode dependencyNode : artifactDependencyNodes) {</span>
+<span class="nc bnc" id="L845" title="All 2 branches missed.">				if (getLog().isDebugEnabled()) {</span>
+<span class="nc" id="L846">					getLog().debug(&quot;Dependency name: &quot; + dependencyNode.toString());</span>
+<span class="nc bnc" id="L847" title="All 4 branches missed.">					if ((dependencyRequest.getCollectRequest() != null) &amp;&amp; (dependencyRequest.getCollectRequest().getTrace() != null)){</span>
+<span class="nc" id="L848">					    getLog().debug(&quot;Dependency request trace: &quot; + </span>
+<span class="nc" id="L849">					            dependencyRequest.getCollectRequest().getTrace().toString());</span>
+					}
+<span class="nc" id="L851">					getLog().debug(LINE_SEPARATOR);</span>
+				}
+<span class="nc" id="L853">                Exclusion dummyExclusion = new Exclusion(</span>
+<span class="nc" id="L854">                        dependencyNode.getArtifact().getGroupId(), </span>
+<span class="nc" id="L855">                        dependencyNode.getArtifact().getArtifactId(), </span>
+<span class="nc" id="L856">                        dependencyNode.getArtifact().getClassifier(), </span>
+<span class="nc" id="L857">                        dependencyNode.getArtifact().getExtension());</span>
+<span class="nc bnc" id="L858" title="All 4 branches missed.">				if ((downloadOptionalDependencies || !dependencyNode.getDependency().isOptional()) &amp;&amp;</span>
+<span class="nc bnc" id="L859" title="All 2 branches missed.">				        ! containsEx(parsedExcludedArtifacts, dummyExclusion) &amp;&amp;</span>
+<span class="nc bnc" id="L860" title="All 4 branches missed.">                        !((rootDependency.getExclusions() != null) &amp;&amp; (containsEx(rootDependency.getExclusions(), dummyExclusion)) ) ) {				        </span>
+<span class="nc" id="L861">					Artifact returnedArtifact = repositorySystem.resolveArtifact(repositorySystemSession,</span>
+<span class="nc" id="L862">					        new ArtifactRequest(dependencyNode)).getArtifact();</span>
+<span class="nc bnc" id="L863" title="All 4 branches missed.">					if ((!returnedArtifact.getArtifactId().startsWith(JMETER_ARTIFACT_PREFIX)) &amp;&amp; (isLibraryArtifact(returnedArtifact))){</span>
+<span class="nc" id="L864">                        copyArtifact(returnedArtifact, libDirectory);</span>
+                    }
+
+<span class="nc bnc" id="L867" title="All 4 branches missed.">                    if (getDependenciesOfDependency &amp;&amp; !processedArtifacts.contains(dummyExclusion)) {</span>
+<span class="nc" id="L868">                        processedArtifacts.add(dummyExclusion);</span>
+<span class="nc bnc" id="L869" title="All 2 branches missed.">                        if (getLog().isDebugEnabled()) {</span>
+<span class="nc" id="L870">                            getLog().debug(&quot;Added to processed list: &quot; + dummyExclusion);</span>
+<span class="nc" id="L871">                            getLog().debug(&quot;total processed: &quot; + processedArtifacts.size());</span>
+<span class="nc" id="L872">                            getLog().debug(LINE_SEPARATOR);</span>
+                        }
+<span class="nc" id="L874">                        copyTransitiveRuntimeDependenciesToLibDirectory(dependencyNode.getDependency(), true);                        </span>
+                    }
+				}
+<span class="nc" id="L877">			}</span>
+<span class="nc" id="L878">		} catch (DependencyCollectionException | ArtifactResolutionException e) {</span>
+<span class="nc" id="L879">			throw new DependencyResolutionException(e.getMessage(), e);</span>
+<span class="nc" id="L880">		}</span>
+<span class="nc" id="L881">	}</span>
+
+    /**
+     * Exclusive can be specified by wildcard:
+     * -- groupId:artifactId:*:*
+     * -- groupId:*:*:*
+     * &lt;p&gt;
+     * And in general, to require a strict match up to the version and the classifier is not necessary
+     * &lt;p&gt;
+     * TODO: the correct fix would be to rewrite {@link Exclusion # equals (Object)}, but what about the boundary case: 
+     * If contains (id1: *: *: *, id1: id2: *: *) == true, then that's equals ??    
+     * TODO: there must be useful code in Aether or maven on this topic
+     * &lt;p&gt;
+     * @param exclusions
+     * @param exclusion
+     * @return
+     */
+    private boolean containsEx(Collection&lt;Exclusion&gt; exclusions, Exclusion exclusion){
+<span class="nc bnc" id="L899" title="All 4 branches missed.">        if(exclusion != null &amp;&amp; exclusions != null) {</span>
+<span class="nc bnc" id="L900" title="All 2 branches missed.">            for(Exclusion currentExclusion: exclusions){</span>
+<span class="nc bnc" id="L901" title="All 2 branches missed.">                if (currentExclusion.getGroupId().equals(exclusion.getGroupId()) &amp;&amp;</span>
+<span class="nc bnc" id="L902" title="All 4 branches missed.">                        (currentExclusion.getArtifactId().equals(exclusion.getArtifactId())) || (currentExclusion.getArtifactId().equals(&quot;*&quot;))){</span>
+<span class="nc" id="L903">                    return true;</span>
+                }
+<span class="nc" id="L905">            }</span>
+        }
+<span class="nc" id="L907">        return false;</span>
+    }
+	
+    /**
+     * Is artifact a library ?
+     * @param artifact {@link Artifact}
+     * @return boolean if true
+     */
+    private boolean isLibraryArtifact(Artifact artifact){
+<span class="nc bnc" id="L916" title="All 2 branches missed.">        return artifact.getExtension().equals(&quot;jar&quot;) || </span>
+<span class="nc bnc" id="L917" title="All 2 branches missed.">                artifact.getExtension().equals(&quot;war&quot;) || </span>
+<span class="nc bnc" id="L918" title="All 2 branches missed.">                artifact.getExtension().equals(&quot;zip&quot;) || </span>
+<span class="nc bnc" id="L919" title="All 2 branches missed.">                artifact.getExtension().equals(&quot;ear&quot;);        </span>
+    }
+
+    /**
+	 * Copy an Artifact to a directory
+	 *
+	 * @param artifact             Artifact that needs to be copied.
+	 * @param destinationDirectory Directory to copy the artifact to.
+	 * @throws IOException                   Unable to copy file
+	 * @throws DependencyResolutionException Unable to resolve dependency
+	 */
+	private void copyArtifact(Artifact artifact, File destinationDirectory) 
+	        throws IOException, DependencyResolutionException {// NOSONAR
+<span class="nc bnc" id="L932" title="All 2 branches missed.">		for (String ignoredArtifact : ignoredArtifacts) {</span>
+<span class="nc" id="L933">			Artifact artifactToIgnore = getArtifactResult(new DefaultArtifact(ignoredArtifact));</span>
+<span class="nc bnc" id="L934" title="All 2 branches missed.">			if (artifact.getFile().getName().equals(artifactToIgnore.getFile().getName())) {</span>
+<span class="nc" id="L935">				getLog().debug(artifact.getFile().getName() + &quot; has not been copied over because it is in the ignore list.&quot;);</span>
+<span class="nc" id="L936">				return;</span>
+			}
+<span class="nc" id="L938">		}</span>
+		try {
+<span class="nc bnc" id="L940" title="All 2 branches missed.">		    for (Iterator&lt;Artifact&gt; iterator = copiedArtifacts.iterator(); iterator.hasNext();) {</span>
+<span class="nc" id="L941">		        Artifact currentArtifact = iterator.next();</span>
+<span class="nc bnc" id="L942" title="All 2 branches missed.">                if(currentArtifact.getGroupId().equals(artifact.getGroupId()) &amp;&amp; </span>
+<span class="nc bnc" id="L943" title="All 2 branches missed.">                        currentArtifact.getArtifactId().equals(artifact.getArtifactId()) &amp;&amp; </span>
+<span class="nc bnc" id="L944" title="All 2 branches missed.">                        currentArtifact.getExtension().equals(artifact.getExtension()) &amp;&amp; </span>
+<span class="nc bnc" id="L945" title="All 2 branches missed.">                        currentArtifact.getClassifier().equals(artifact.getClassifier())){</span>
+                    // already copied, but perhaps the version right now is more recent than it was.
+                    // We keep the most recent one
+<span class="nc" id="L948">                    GenericVersionScheme genericVersionScheme = new GenericVersionScheme();</span>
+<span class="nc" id="L949">                    Version currentArtifactVersion = genericVersionScheme.parseVersion(currentArtifact.getVersion());                   </span>
+<span class="nc" id="L950">                    Version artifactVersion = genericVersionScheme.parseVersion(artifact.getVersion());</span>
+<span class="nc bnc" id="L951" title="All 2 branches missed.">                    if (currentArtifactVersion.compareTo(artifactVersion) &gt;= 0){</span>
+                        // the version of the already copied artifact above or the same, do not copy, do nothing
+<span class="nc" id="L953">                        return;</span>
+                    } else{
+                        // We delete the old artifact, and copy it
+                        // (here we only delete, we will copy by the output from the loop)
+<span class="nc" id="L957">                        File artifactToDelete = new File(destinationDirectory, currentArtifact.getFile().getName());</span>
+<span class="nc" id="L958">                        getLog().debug(&quot;Deleting file:'&quot;+artifactToDelete.getAbsolutePath()+&quot;'&quot;);</span>
+<span class="nc" id="L959">                        FileUtils.forceDelete(artifactToDelete);</span>
+<span class="nc" id="L960">                        iterator.remove();</span>
+<span class="nc" id="L961">                        break;</span>
+                    }
+                }
+<span class="nc" id="L964">            }</span>
+<span class="nc" id="L965">            copiedArtifacts.add(artifact);</span>
+<span class="nc" id="L966">			File artifactToCopy = new File(destinationDirectory, artifact.getFile().getName());</span>
+<span class="nc" id="L967">			getLog().debug(&quot;Checking: &quot; + artifactToCopy.getAbsolutePath() + &quot;...&quot;);</span>
+<span class="nc bnc" id="L968" title="All 2 branches missed.">			if (!artifactToCopy.exists()) {</span>
+<span class="nc" id="L969">				getLog().debug(&quot;Copying: &quot; + artifactToCopy.getAbsolutePath() + &quot; to &quot;+destinationDirectory.getAbsolutePath());</span>
+<span class="nc" id="L970">				FileUtils.copyFileToDirectory(artifact.getFile(), destinationDirectory);</span>
+			}
+<span class="nc" id="L972">		} catch (java.io.IOException | InvalidVersionSpecificationException e) {</span>
+<span class="nc" id="L973">			throw new IOException(e.getMessage(), e);</span>
+<span class="nc" id="L974">		}</span>
+<span class="nc" id="L975">	}</span>
+
+	/**
+	 * Extract the configuration settings (not properties files) from the configuration artifact 
+	 * and load them into the /bin directory
+	 *
+	 * @param artifact Configuration artifact
+	 * @throws IOException
+	 */
+	private void extractConfigSettings(Artifact artifact) 
+	        throws IOException  {// NOSONAR
+<span class="nc" id="L986">		try (JarFile configSettings = new JarFile(artifact.getFile())) {</span>
+<span class="nc" id="L987">			Enumeration&lt;JarEntry&gt; entries = configSettings.entries();</span>
+<span class="nc bnc" id="L988" title="All 2 branches missed.">			while (entries.hasMoreElements()) {</span>
+<span class="nc" id="L989">				JarEntry jarFileEntry = entries.nextElement();</span>
+				// Only interested in files in the /bin directory that are not properties files
+<span class="nc bnc" id="L991" title="All 4 branches missed.">				if (!jarFileEntry.isDirectory() &amp;&amp; jarFileEntry.getName().startsWith(&quot;bin&quot;) </span>
+<span class="nc bnc" id="L992" title="All 2 branches missed.">				        &amp;&amp; !jarFileEntry.getName().endsWith(&quot;.properties&quot;)) {</span>
+<span class="nc" id="L993">					File fileToCreate = new File(jmeterDirectory, jarFileEntry.getName());</span>
+<span class="nc" id="L994">					copyInputStreamToFile(configSettings.getInputStream(jarFileEntry), fileToCreate);</span>
+				}
+<span class="nc" id="L996">			}</span>
+<span class="nc" id="L997">		} catch (java.io.IOException e) {</span>
+<span class="nc" id="L998">			throw new IOException(e.getMessage(), e);</span>
+<span class="nc" id="L999">		}</span>
+<span class="nc" id="L1000">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

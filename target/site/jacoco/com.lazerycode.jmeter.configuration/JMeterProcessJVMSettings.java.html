@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JMeterProcessJVMSettings.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">perfana-jmeter-maven-plugin</a> &gt; <a href="index.source.html" class="el_package">com.lazerycode.jmeter.configuration</a> &gt; <span class="el_source">JMeterProcessJVMSettings.java</span></div><h1>JMeterProcessJVMSettings.java</h1><pre class="source lang-java linenums">package com.lazerycode.jmeter.configuration;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Used to detect which artifacts are JMeter plugins
+ * &lt;p/&gt;
+ * Configuration in pom.xml:
+ * &lt;p/&gt;
+ * &lt;pre&gt;
+ * {@code
+ * 	&lt;configuration&gt;
+ *      &lt;jMeterProcessJVMSettings&gt;
+ *          &lt;javaRuntime&gt;${env.JAVA_HOME}/bin/java&lt;/javaRuntime&gt;
+ *          &lt;xms&gt;512&lt;/xms&gt;
+ *          &lt;xmx&gt;1024&lt;/xmx&gt;
+ *          &lt;arguments&gt;
+ *              &lt;argument&gt;foo&lt;/argument&gt;
+ *          &lt;/arguments&gt;
+ *      &lt;/jMeterProcessJVMSettings&gt;
+ *  &lt;/configuration&gt;
+ * }
+ * &lt;/pre&gt;
+ *
+ * @author Mark Collin
+ */
+public class JMeterProcessJVMSettings {
+
+<span class="nc" id="L30">	private int xms = 512;</span>
+<span class="nc" id="L31">	private int xmx = 512;</span>
+<span class="nc" id="L32">	private String java = &quot;java&quot;;</span>
+<span class="nc" id="L33">	private List&lt;String&gt; arguments = new ArrayList&lt;&gt;();</span>
+
+	/**
+	 * Empty constructor
+	 */
+	public JMeterProcessJVMSettings() {
+<span class="nc" id="L39">	    super();</span>
+<span class="nc" id="L40">	}</span>
+	
+	/**
+	 * Copy constructor
+	 * @param source {@link JMeterProcessJVMSettings}
+	 */
+<span class="nc" id="L46">	public JMeterProcessJVMSettings(JMeterProcessJVMSettings source) {</span>
+<span class="nc" id="L47">	    this.xmx = source.xms;</span>
+<span class="nc" id="L48">	    this.xms = source.xms;</span>
+<span class="nc" id="L49">	    this.java = source.java;</span>
+<span class="nc" id="L50">	    this.arguments = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L51">        this.arguments.addAll(source.arguments);</span>
+<span class="nc" id="L52">	}</span>
+	public int getXms() {
+<span class="nc" id="L54">		return xms;</span>
+	}
+
+	public void setXms(int xms) {
+<span class="nc" id="L58">		this.xms = xms;</span>
+<span class="nc" id="L59">	}</span>
+
+	public int getXmx() {
+<span class="nc" id="L62">		return xmx;</span>
+	}
+
+	public void setXmx(int xmx) {
+<span class="nc" id="L66">		this.xmx = xmx;</span>
+<span class="nc" id="L67">	}</span>
+
+	public List&lt;String&gt; getArguments() {
+<span class="nc" id="L70">		return arguments;</span>
+	}
+
+	public void setArguments(List&lt;String&gt; arguments) {
+<span class="nc" id="L74">		this.arguments = arguments;</span>
+<span class="nc" id="L75">	}</span>
+
+	public void setJavaRuntime(String java) {
+<span class="nc" id="L78">		this.java = java;</span>
+<span class="nc" id="L79">	}</span>
+
+	public String getJavaRuntime() {
+<span class="nc" id="L82">		return this.java;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

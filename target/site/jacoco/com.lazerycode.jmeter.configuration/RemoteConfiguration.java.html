@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RemoteConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">perfana-jmeter-maven-plugin</a> &gt; <a href="index.source.html" class="el_package">com.lazerycode.jmeter.configuration</a> &gt; <span class="el_source">RemoteConfiguration.java</span></div><h1>RemoteConfiguration.java</h1><pre class="source lang-java linenums">package com.lazerycode.jmeter.configuration;
+
+import com.lazerycode.jmeter.properties.ConfigurationFiles;
+import com.lazerycode.jmeter.properties.PropertiesMapping;
+
+import java.util.Map;
+
+/**
+ * This is used by the TestManager to configure remote serverList and stopServersAfterTests settings for each test run.
+ * &lt;p/&gt;
+ * Configuration in pom.xml:
+ * &lt;p/&gt;
+ * &lt;pre&gt;
+ * {@code
+ * &lt;remoteConfig&gt;
+ *     &lt;stopServersAfterTests&gt;&lt;/stopServersAfterTests&gt;
+ *     &lt;startServersBeforeTests&gt;&lt;/startServersBeforeTests&gt;
+ *     &lt;serverList&gt;&lt;/serverList&gt;
+ *     &lt;startAndStopServersForEachTest&gt;&lt;/startAndStopServersForEachTest&gt;
+ * &lt;/remoteConfig&gt;
+ * }
+ * &lt;/pre&gt;
+ *
+ * @author Arne Franken
+ */
+<span class="nc" id="L26">public class RemoteConfiguration {</span>
+
+<span class="nc" id="L28">	private boolean startServersBeforeTests = false;</span>
+<span class="nc" id="L29">	private boolean stopServersAfterTests = false;</span>
+<span class="nc" id="L30">	private boolean startAndStopServersForEachTest = false;</span>
+<span class="nc" id="L31">	private String serverList = null;</span>
+<span class="nc" id="L32">	private Map&lt;ConfigurationFiles, PropertiesMapping&gt; propertiesMap = null;</span>
+
+
+	/**
+	 * @return Stop remote servers when the test finishes
+	 */
+	public boolean isStopServersAfterTests() {
+<span class="nc" id="L39">		return stopServersAfterTests;</span>
+	}
+
+	/**
+	 * Stop remote servers when the test finishes
+	 * Default: {@link false Boolean.FALSE}
+	 *
+	 * @param stopServersAfterTests boolean
+	 */
+	public void setStopServersAfterTests(boolean stopServersAfterTests) {
+<span class="nc" id="L49">		this.stopServersAfterTests = stopServersAfterTests;</span>
+<span class="nc" id="L50">	}</span>
+
+	/**
+	 * @return Start all remote servers as defined in jmeter.properties when the test starts
+	 */
+	public boolean isStartServersBeforeTests() {
+<span class="nc" id="L56">		return startServersBeforeTests;</span>
+	}
+
+
+	/**
+	 * Start all remote servers as defined in jmeter.properties when the test starts
+	 * Default: {@link false Boolean.FALSE}
+	 *
+	 * @param startServersBeforeTests boolean
+	 */
+	public void setStartServersBeforeTests(boolean startServersBeforeTests) {
+<span class="nc" id="L67">		this.startServersBeforeTests = startServersBeforeTests;</span>
+<span class="nc" id="L68">	}</span>
+
+	/**
+	 * @return Comma separated list of servers to serverList when starting tests
+	 */
+	public String getServerList() {
+<span class="nc" id="L74">		return serverList;</span>
+	}
+
+	/**
+	 * Comma separated list of servers to serverList when starting tests
+	 *
+	 * @param serverList String
+	 */
+	public void setServerList(String serverList) {
+<span class="nc" id="L83">		this.serverList = serverList;</span>
+<span class="nc" id="L84">	}</span>
+
+	/**
+	 * @return Remote serverList and stopServersAfterTests for every test, or once for the entire test suite of tests.
+	 */
+	public boolean isStartAndStopServersForEachTest() {
+<span class="nc" id="L90">		return startAndStopServersForEachTest;</span>
+	}
+
+	/**
+	 * Remote serverList and stopServersAfterTests for every test, or once for the entire test suite of tests.
+	 * Default: {@link true Boolean.TRUE} (once for the entire suite of tests)
+	 *
+	 * @param startAndStopServersForEachTest boolean
+	 */
+	public void setStartAndStopServersForEachTest(boolean startAndStopServersForEachTest) {
+<span class="nc" id="L100">		this.startAndStopServersForEachTest = startAndStopServersForEachTest;</span>
+<span class="nc" id="L101">	}</span>
+
+	/**
+	 * Remote configuration details formatted for command line output.
+	 *
+	 * @return String
+	 */
+	@Override
+	public String toString() {
+<span class="nc" id="L110">		return &quot;RemoteConfiguration [ &quot; + &quot;Start=&quot; + getServerList() + &quot;, Stop=&quot; + isStopServersAfterTests() + &quot;, StartAndStopOnce=&quot; + isStartAndStopServersForEachTest() + &quot;, StartAll=&quot; + isStartServersBeforeTests() + &quot; ]&quot;;</span>
+	}
+
+
+	/**
+	 * @return propertycontainers with information specified in the various property sources.
+	 */
+	public Map&lt;ConfigurationFiles, PropertiesMapping&gt; getPropertiesMap() {
+<span class="nc" id="L118">		return propertiesMap;</span>
+	}
+
+	public void setPropertiesMap(Map&lt;ConfigurationFiles, PropertiesMapping&gt; propertiesMap) {
+<span class="nc" id="L122">		this.propertiesMap = propertiesMap;</span>
+<span class="nc" id="L123">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JMeterCommandLineArguments.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">perfana-jmeter-maven-plugin</a> &gt; <a href="index.source.html" class="el_package">com.lazerycode.jmeter.configuration</a> &gt; <span class="el_source">JMeterCommandLineArguments.java</span></div><h1>JMeterCommandLineArguments.java</h1><pre class="source lang-java linenums">package com.lazerycode.jmeter.configuration;
+
+/**
+ * An Enum holding all of the command line arguments accepted by JMeter
+ * The values are defined in a specific order to ensure the order attributes are applied to the command line.
+ *
+ * @author Mark Collin
+ */
+<span class="fc" id="L9">public enum JMeterCommandLineArguments {</span>
+
+<span class="fc" id="L11">	PROXY_PASSWORD(&quot;a&quot;),            //DOCUMENTED</span>
+<span class="fc" id="L12">	JMETER_HOME_OPT(&quot;d&quot;),           //ALWAYS_SET - The JMeter dir structure is created by the plugin.</span>
+<span class="fc" id="L13">	REPORT_AT_END_OPT(&quot;e&quot;),         //DOCUMENTED</span>
+<span class="fc" id="L14">	HELP_OPT(&quot;h&quot;),                  //NOT_USED - Prints help information and exits.</span>
+<span class="fc" id="L15">	REPORT_GENERATING_OPT(&quot;g&quot;),     //NOT_USED - We always generate reports in the verify phase.</span>
+<span class="fc" id="L16">	JMLOGFILE_OPT(&quot;j&quot;),             //ALWAYS_SET - Test name is used for logfile name (&lt;testname&gt;.log).</span>
+<span class="fc" id="L17">	LOGFILE_OPT(&quot;l&quot;),               //ALWAYS_SET - Test name is used for logfile name (&lt;testname&gt;.jtl).</span>
+<span class="fc" id="L18">	NONGUI_OPT(&quot;n&quot;),                //DOCUMENTED</span>
+<span class="fc" id="L19">	REPORT_OUTPUT_FOLDER_OPT(&quot;o&quot;),  //DOCUMENTED</span>
+<span class="fc" id="L20">	PROPFILE_OPT(&quot;p&quot;),              //NOT_USED - We place the jmeter.properties in the correct place on the filesystem.</span>
+<span class="fc" id="L21">	PROPFILE2_OPT(&quot;q&quot;),             //DOCUMENTED</span>
+<span class="fc" id="L22">	REMOTE_OPT(&quot;r&quot;),                //DOCUMENTED</span>
+<span class="fc" id="L23">	SERVER_OPT(&quot;s&quot;),                //NOT_USED - We are never going to start up a server instance on the command line, we are only running tests.</span>
+<span class="fc" id="L24">	TESTFILE_OPT(&quot;t&quot;),              //ALWAYS_SET - This is how we pass our test file list over to JMeter.</span>
+<span class="fc" id="L25">	PROXY_USERNAME(&quot;u&quot;),            //DOCUMENTED</span>
+<span class="fc" id="L26">	VERSION_OPT(&quot;v&quot;),               //NOT_USED - Prints version information and exits.</span>
+<span class="fc" id="L27">	SYSTEM_PROPERTY(&quot;D&quot;),           //DOCUMENTED</span>
+<span class="fc" id="L28">	JMETER_GLOBAL_PROP(&quot;G&quot;),        //DOCUMENTED</span>
+<span class="fc" id="L29">	PROXY_HOST(&quot;H&quot;),                //DOCUMENTED</span>
+<span class="fc" id="L30">	JMETER_PROPERTY(&quot;J&quot;),           //DOCUMENTED</span>
+<span class="fc" id="L31">	LOGLEVEL(&quot;L&quot;),                  //DOCUMENTED</span>
+<span class="fc" id="L32">	NONPROXY_HOSTS(&quot;N&quot;),            //DOCUMENTED</span>
+<span class="fc" id="L33">	PROXY_PORT(&quot;P&quot;),                //DOCUMENTED</span>
+<span class="fc" id="L34">	REMOTE_OPT_PARAM(&quot;R&quot;),          //DOCUMENTED</span>
+<span class="fc" id="L35">	SYSTEM_PROPFILE(&quot;S&quot;),           //NOT_USED - We place the system.properties in the correct place on the filesystem.</span>
+<span class="fc" id="L36">	REMOTE_STOP(&quot;X&quot;);               //DOCUMENTED</span>
+
+	private final String commandLineArgument;
+
+<span class="fc" id="L40">	JMeterCommandLineArguments(String commandLineArgument) {</span>
+<span class="fc" id="L41">		this.commandLineArgument = commandLineArgument;</span>
+<span class="fc" id="L42">	}</span>
+
+	public String getCommandLineArgument() {
+<span class="fc" id="L45">		return &quot;-&quot; + commandLineArgument;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>

@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractJMeterMojo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">perfana-jmeter-maven-plugin</a> &gt; <a href="index.source.html" class="el_package">com.lazerycode.jmeter.mojo</a> &gt; <span class="el_source">AbstractJMeterMojo.java</span></div><h1>AbstractJMeterMojo.java</h1><pre class="source lang-java linenums">package com.lazerycode.jmeter.mojo;
+
+import static com.lazerycode.jmeter.utility.UtilityFunctions.isSet;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.maven.execution.MavenSession;
+import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugin.MojoExecution;
+import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.settings.Proxy;
+import org.apache.maven.settings.Settings;
+import org.joda.time.format.DateTimeFormat;
+
+import com.lazerycode.jmeter.configuration.JMeterArgumentsArray;
+import com.lazerycode.jmeter.configuration.JMeterProcessJVMSettings;
+import com.lazerycode.jmeter.configuration.ProxyConfiguration;
+import com.lazerycode.jmeter.configuration.RemoteConfiguration;
+import com.lazerycode.jmeter.exceptions.IOException;
+
+/**
+ * JMeter Maven plugin.
+ * This is a base class for the JMeter mojos.
+ *
+ * @author Tim McCune
+ */
+@SuppressWarnings({&quot;UnusedDeclaration&quot;, &quot;FieldCanBeLocal&quot;, &quot;JavaDoc&quot;}) // Mojos get their fields set via reflection
+<span class="fc" id="L33">public abstract class AbstractJMeterMojo extends AbstractMojo {</span>
+    protected static final String LINE_SEPARATOR = &quot;-------------------------------------------------------&quot;;
+
+    protected static final String JMETER_ARTIFACT_PREFIX = &quot;ApacheJMeter_&quot;;
+    protected static final String JMETER_ARTIFACT_NAME = &quot;ApacheJMeter&quot;;
+    protected static final String JMETER_CONFIG_ARTIFACT_NAME = &quot;ApacheJMeter_config&quot;;
+    protected static final String JORPHAN_ARTIFACT_NAME = &quot;jorphan&quot;;
+    protected static final String JMETER_GROUP_ID = &quot;org.apache.jmeter&quot;;
+
+	/**
+	 * Sets the list of include patterns to use in directory scan for JMX files.
+	 * Relative to testFilesDirectory.
+	 */
+<span class="fc" id="L46">	@Parameter</span>
+	protected List&lt;String&gt; testFilesIncluded = new ArrayList&lt;&gt;();
+
+	/**
+	 * Sets the list of exclude patterns to use in directory scan for JMX files.
+	 * Relative to testFilesDirectory.
+	 */
+<span class="fc" id="L53">	@Parameter</span>
+	protected List&lt;String&gt; testFilesExcluded = new ArrayList&lt;&gt;();
+
+	/**
+	 * Path under which .conf files are stored.
+	 */
+	@Parameter(defaultValue = &quot;${basedir}/src/test/conf&quot;)
+	protected File confFilesDirectory;
+
+	/**
+	 * Path under which JMX files are stored.
+	 */
+	@Parameter(defaultValue = &quot;${basedir}/src/test/jmeter&quot;)
+	protected File testFilesDirectory;
+
+	/**
+	 * Timestamp the test results.
+	 */
+	@Parameter(defaultValue = &quot;true&quot;)
+	protected boolean testResultsTimestamp;
+
+	/**
+	 * Append the results timestamp to the filename
+	 * (It will be prepended by default if testResultsTimestamp is set to true)
+	 */
+	@Parameter(defaultValue = &quot;false&quot;)
+	protected boolean appendResultsTimestamp;
+
+	/**
+	 * Set the format of the timestamp that is appended to the results filename.
+	 * (This assumes that testResultsTimestamp is set to 'true')
+	 * For formatting see http://joda-time.sourceforge.net/apidocs/org/joda/time/format/DateTimeFormat.html
+	 */
+	@Parameter()
+	protected String resultsFileNameDateFormat;
+
+	/**
+	 * Set the directory that JMeter results are saved to.
+	 */
+	@Parameter(defaultValue = &quot;${project.build.directory}/jmeter/results&quot;)
+	protected File resultsDirectory;
+
+	/**
+	 * Generate JMeter Reports (this will force your .jtl's into .csv mode)
+	 */
+	@Parameter(defaultValue = &quot;true&quot;)
+	protected boolean generateReports;
+
+	/**
+	 * Set the directory that JMeter reports are saved to.
+	 */
+	@Parameter(defaultValue = &quot;${project.build.directory}/jmeter/reports&quot;)
+	protected File reportDirectory;
+
+	/**
+	 * Set the directory that JMeter test files are copied into as part of the build.
+	 */
+	@Parameter(defaultValue = &quot;${project.build.directory}/jmeter/testFiles&quot;)
+	protected File testFilesBuildDirectory;
+
+	/**
+	 * Set the directory that JMeter logs are saved to.
+	 */
+	@Parameter(defaultValue = &quot;${project.build.directory}/jmeter/logs&quot;)
+	protected File logsDirectory;
+
+	/**
+	 * Absolute path to JMeter custom (test dependent) properties file.
+	 */
+<span class="fc" id="L122">	@Parameter</span>
+	protected List&lt;File&gt; customPropertiesFiles = new ArrayList&lt;&gt;();
+
+	/**
+	 * Use maven proxy configuration if no specific proxy configuration provided
+	 */
+	@Parameter
+	protected boolean useMavenProxy;
+
+	/**
+	 * Maven settings
+	 */
+	@Parameter(defaultValue = &quot;${settings}&quot;, readonly = true)
+	protected Settings settings;
+
+
+	/**
+	 * Value class that wraps all proxy configurations.
+	 */
+	@Parameter
+	protected ProxyConfiguration proxyConfig;
+
+	/**
+	 * Value class that wraps all remote configurations.
+	 */
+	@Parameter
+	protected RemoteConfiguration remoteConfig;
+
+	/**
+	 * Value class that wraps all JMeter Process JVM settings.
+	 */
+	@Parameter
+	protected JMeterProcessJVMSettings jMeterProcessJVMSettings;
+
+	/**
+	 * Set a root log level to override all log levels used by JMeter
+	 * Valid log levels are: ERROR, WARN, INFO, DEBUG (They are not case sensitive);
+	 * If you try to set an invalid log level it will be ignored
+	 */
+	@Parameter
+	protected String overrideRootLogLevel;
+
+	/**
+	 * Suppress JMeter output
+	 */
+	@Parameter(defaultValue = &quot;false&quot;)
+	protected boolean suppressJMeterOutput;
+
+	/**
+	 * The information extracted from the Mojo being currently executed
+	 */
+	@Parameter(defaultValue = &quot;${mojoExecution}&quot;, required = true, readonly = true)
+	protected MojoExecution mojoExecution;
+
+	@Parameter(defaultValue = &quot;${session}&quot;, readonly = true)
+	private MavenSession session;
+
+	/**
+	 * Skip the JMeter tests
+	 */
+	@Parameter(defaultValue = &quot;${skipTests}&quot;)
+	protected boolean skipTests;
+
+	/**
+	 * Set a pause in seconds after each test that is run.
+	 */
+	@Parameter(defaultValue = &quot;0&quot;)
+	protected String postTestPauseInSeconds;
+
+	/**
+	 * The filename used to store the results config
+	 */
+	@Parameter(defaultValue = &quot;${project.build.directory}/config.json&quot;)
+	protected String testConfigFile;
+
+	//------------------------------------------------------------------------------------------------------------------
+
+	/**
+	 * Place where the JMeter files will be generated.
+	 */
+	@Parameter(defaultValue = &quot;${project.build.directory}/jmeter&quot;)
+	protected File jmeterDirectory;
+
+	/**
+	 * The project build directory
+	 */
+	@Parameter(defaultValue = &quot;${project.build.directory}&quot;)
+	protected File projectBuildDirectory;
+
+	//==================================================================================================================
+
+	@Override
+	public final void execute() throws MojoExecutionException, MojoFailureException {
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">		if (skipTests) {</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">			if (session.getGoals().contains(&quot;jmeter:gui&quot;)) {</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">				if (!&quot;default-cli&quot;.equals(mojoExecution.getExecutionId()) &amp;&amp; </span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">				        !&quot;compile&quot;.equals(mojoExecution.getLifecyclePhase())) {</span>
+<span class="nc" id="L219">					getLog().info(&quot;Performance tests are skipped.&quot;);</span>
+<span class="nc" id="L220">					return;</span>
+				}
+			} else {
+<span class="nc" id="L223">				getLog().info(&quot;Performance tests are skipped.&quot;);</span>
+<span class="nc" id="L224">				return;</span>
+			}
+		}
+
+		// load maven proxy if needed
+<span class="fc bfc" id="L229" title="All 4 branches covered.">		if (useMavenProxy &amp;&amp; proxyConfig == null) {</span>
+<span class="fc" id="L230">			loadMavenProxy();</span>
+		}
+
+		try {
+<span class="fc" id="L234">			doExecute();</span>
+<span class="nc" id="L235">		} catch (java.io.IOException e) {</span>
+			// TODO Auto-generated catch block
+<span class="nc" id="L237">			e.printStackTrace();</span>
+<span class="fc" id="L238">		}</span>
+<span class="fc" id="L239">	}</span>
+
+	protected abstract void doExecute() throws MojoExecutionException, MojoFailureException, java.io.IOException;
+
+	/**
+	 * Generate the initial JMeter Arguments array that is used to create the command line that we pass to JMeter.
+	 *
+	 * @throws MojoExecutionException
+	 */
+	protected JMeterArgumentsArray computeJMeterArgumentsArray(boolean disableGUI, boolean isCSVFormat) throws MojoExecutionException {
+<span class="nc" id="L249">	    JMeterArgumentsArray testArgs = new JMeterArgumentsArray(disableGUI, jmeterDirectory.getAbsolutePath());</span>
+<span class="nc" id="L250">		testArgs.setResultsDirectory(resultsDirectory.getAbsolutePath());</span>
+<span class="nc" id="L251">		testArgs.setResultFileOutputFormatIsCSV(isCSVFormat);</span>
+<span class="nc bnc" id="L252" title="All 4 branches missed.">		if (generateReports &amp;&amp; disableGUI) {</span>
+<span class="nc" id="L253">			testArgs.setReportsDirectory(reportDirectory.getAbsolutePath());</span>
+		}
+<span class="nc bnc" id="L255" title="All 2 branches missed.">		if (testResultsTimestamp) {</span>
+<span class="nc" id="L256">			testArgs.setResultsTimestamp(true);</span>
+<span class="nc" id="L257">			testArgs.appendTimestamp(appendResultsTimestamp);</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">			if (isSet(resultsFileNameDateFormat)) {</span>
+				try {
+<span class="nc" id="L260">					testArgs.setResultsFileNameDateFormat(DateTimeFormat.forPattern(resultsFileNameDateFormat));</span>
+<span class="nc" id="L261">				} catch (Exception ex) {</span>
+<span class="nc" id="L262">					getLog().error(&quot;'&quot; + resultsFileNameDateFormat + &quot;' is an invalid DateTimeFormat.  Defaulting to Standard ISO_8601.&quot;, ex);</span>
+<span class="nc" id="L263">				}</span>
+			}
+		}
+<span class="nc" id="L266">		testArgs.setProxyConfig(proxyConfig);</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">		for (File customPropertiesFile : customPropertiesFiles) {</span>
+<span class="nc" id="L268">			testArgs.setACustomPropertiesFile(customPropertiesFile);</span>
+<span class="nc" id="L269">		}</span>
+<span class="nc" id="L270">		testArgs.setLogRootOverride(overrideRootLogLevel);</span>
+<span class="nc" id="L271">		testArgs.setLogsDirectory(logsDirectory.getAbsolutePath());</span>
+<span class="nc" id="L272">		return testArgs;</span>
+	}
+
+	/**
+	 * Try to load the active maven proxy.
+	 */
+	protected void loadMavenProxy() {
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">		if (settings == null)</span>
+<span class="nc" id="L280">			return;</span>
+
+		try {
+<span class="fc" id="L283">			Proxy mvnProxy = settings.getActiveProxy();</span>
+
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">			if (mvnProxy != null) {</span>
+
+<span class="fc" id="L287">				ProxyConfiguration newProxyConf = new ProxyConfiguration();</span>
+<span class="fc" id="L288">				newProxyConf.setHost(mvnProxy.getHost());</span>
+<span class="fc" id="L289">				newProxyConf.setPort(mvnProxy.getPort());</span>
+<span class="fc" id="L290">				newProxyConf.setUsername(mvnProxy.getUsername());</span>
+<span class="fc" id="L291">				newProxyConf.setPassword(mvnProxy.getPassword());</span>
+<span class="fc" id="L292">				newProxyConf.setHostExclusions(mvnProxy.getNonProxyHosts());</span>
+<span class="fc" id="L293">				proxyConfig = newProxyConf;</span>
+
+<span class="fc" id="L295">				getLog().info(&quot;Maven proxy loaded successfully&quot;);</span>
+<span class="fc" id="L296">			} else {</span>
+<span class="nc" id="L297">				getLog().warn(&quot;No maven proxy found, but useMavenProxy set to true.&quot;);</span>
+			}
+<span class="nc" id="L299">		} catch (Exception e) {</span>
+<span class="nc" id="L300">			getLog().error(&quot;Error while loading maven proxy&quot;, e);</span>
+<span class="fc" id="L301">		}</span>
+<span class="fc" id="L302">	}</span>
+
+	static void copyFilesInTestDirectory(File sourceDirectory, File destinationDirectory) throws IOException { // NOSONAR
+		try {
+<span class="fc" id="L306">			FileUtils.copyDirectory(sourceDirectory, destinationDirectory);</span>
+<span class="nc" id="L307">		} catch (java.io.IOException e) {</span>
+<span class="nc" id="L308">			throw new IOException(e.getMessage(), e);</span>
+<span class="fc" id="L309">		}</span>
+
+<span class="fc" id="L311">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.2.201808211720</span></div></body></html>
